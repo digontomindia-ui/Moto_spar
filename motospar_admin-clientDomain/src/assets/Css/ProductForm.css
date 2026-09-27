@@ -1,0 +1,57 @@
+.subHeading {
+    padding: 10px;
+    margin-left: 10px;
+}
+.divider {
+    margin-top: -5px;
+    margin-bottom: -5px;
+}
+.savebtn {
+    background-color: #ff803e;
+    border-color: #ff803e;
+}
+
+.image-upload-area {
+    border: 2px dashed #cfcfcf;
+    background-color: #fefefe;
+    height: 150px;
+    width: 350px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.border-dashed {
+    border-style: dashed !important;
+}
+
+.image-upload-area p,
+.image-upload-area small {
+    margin: 0;
+    color: #6c757d;
+}
+
+.active-dropzone {
+    background-color: #f0f8ff;
+    border-color: #007bff;
+}
+.image-upload-area {
+    cursor: pointer;
+}
+
+.image-preview-container {
+    gap: 10px;
+}
+
+.image-preview-card {
+    position: relative;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.image-preview-card button {
+    background-color: #ff4d4d;
+    border: none;
+}

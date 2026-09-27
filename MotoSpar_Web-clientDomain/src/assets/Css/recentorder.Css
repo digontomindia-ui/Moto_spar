@@ -1,0 +1,9 @@
+@media (max-width: 768px) {
+    .table {
+        font-size: 0.9rem; /* Reduce font size for smaller screens */
+    }
+    .table th,
+    .table td {
+        white-space: nowrap; /* Prevent content from wrapping */
+    }
+}

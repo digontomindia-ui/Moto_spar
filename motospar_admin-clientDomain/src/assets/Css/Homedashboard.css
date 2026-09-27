@@ -1,0 +1,177 @@
+/* App.css */
+.custom-card {
+    border-radius: 15px;
+}
+
+.shadow-sm {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Custom shadow */
+}
+
+.card-body {
+    padding: 20px;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    text-align: left;
+}
+
+.table tbody td {
+    vertical-align: middle;
+}
+/* App.css */
+
+/* Table custom design */
+.custom-table {
+    border-collapse: separate;
+    border-spacing: 0 0.75rem; /* Adds space between rows */
+}
+
+.custom-table thead th {
+    border-bottom: none;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    font-weight: 500;
+    text-align: left;
+}
+
+.custom-table tbody tr {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease-in-out;
+}
+
+.custom-table tbody tr:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.custom-table tbody td {
+    padding: 15px;
+    vertical-align: middle;
+    border-top: none;
+    border-bottom: none;
+}
+
+.custom-table .product-icon {
+    width: 24px;
+    margin-right: 10px;
+}
+
+.custom-table .action-iconEye {
+    cursor: pointer;
+    margin-right: 10px;
+    color: #0056b3;
+}
+.custom-table .action-iconEdit {
+    cursor: pointer;
+    margin-right: 10px;
+    color: #00ff59;
+}
+.custom-table .action-iconTrash {
+    cursor: pointer;
+    margin-right: 10px;
+    color: #ff0000;
+}
+
+.custom-table .action-icon:hover {
+    color: #0056b3;
+}
+
+.custom-table td:last-child {
+    text-align: center;
+}
+
+/* Badge customization */
+.badge-success {
+    background-color: #28a745;
+}
+
+.badge-danger {
+    background-color: #dc3545;
+}
+
+.badge-warning {
+    background-color: #ffc107;
+}
+.brand {
+    display: flex;
+}
+.brand .img-fluid {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+}
+/* App.css */
+
+/* Header container */
+.custom-header {
+    padding: 10px 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 60px;
+    width: 100%;
+}
+
+/* Header title */
+.header-title {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #333;
+}
+
+/* Icons on the right side */
+.header-icons {
+    display: flex;
+    align-items: center;
+}
+
+/* Notification bell icon */
+.notification-icon {
+    font-size: 1.5rem;
+    margin-right: 20px;
+    color: #f56c6c; /* Matching the red color of the bell */
+    cursor: pointer;
+}
+
+.notification-icon:hover {
+    color: #ff5b5b;
+}
+
+/* Profile image */
+.profile-image {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    cursor: pointer;
+}
+.productlist {
+    text-decoration: none;
+    color: white;
+
+    /* font-size: 15px; */
+}
+.summary-icon {
+    width: 60px;
+    height: 60px;
+}
+
+@media (max-width: 576px) {
+    .summary-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    h5 {
+        font-size: 1rem;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+    }
+}

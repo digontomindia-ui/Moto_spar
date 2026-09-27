@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title> MotoSpar OTP Email </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .email-header {
+            text-align: center;
+            padding-bottom: 20px;
+        }
+        .email-header img {
+            width: 100px;
+        }
+        .email-body {
+            padding: 20px;
+            border-top: 1px solid #eeeeee;
+        }
+        .email-footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #888888;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h2>2FA OTP MotoSpar</h2>
+        </div>
+        <div class="email-body">
+            <p>Dear User,</p>
+            <p>Your OTP for Two-Factor Authentication is:</p>
+            <h3>{{ otp }}</h3>
+            <p>Please use this OTP to complete your authentication.</p>
+            <p>Best regards,<br>Your MotoSpar Team</p>
+        </div>
+        <div class="email-footer">
+            &copy; {{ current_year }} MotoSpar. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

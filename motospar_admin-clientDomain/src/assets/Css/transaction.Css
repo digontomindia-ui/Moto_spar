@@ -1,0 +1,27 @@
+/* Ensure search input takes up full width on smaller screens */
+@media (max-width: 576px) {
+    .wrapper {
+        width: 100%;
+    }
+
+    .input {
+        width: 100%;
+        padding: 0.5rem;
+    }
+
+    /* Adjust pagination controls */
+    .pagination {
+        justify-content: center;
+    }
+
+    /* Make table scrollable horizontally on smaller screens */
+    .table-responsive {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Adjust header font size for better readability */
+    .table th,
+    .table td {
+        font-size: 0.9rem;
+    }
+}

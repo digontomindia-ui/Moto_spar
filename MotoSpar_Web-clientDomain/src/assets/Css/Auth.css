@@ -1,0 +1,393 @@
+.sign-in-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #ffd2be;
+}
+.outer-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 70%;
+    background-color: white;
+}
+.form-containerRegister {
+    background-color: #fff;
+    border-radius: 10px;
+    padding-left: 40px;
+    padding-right: 60px;
+    padding-top: 10px;
+    padding-bottom: 20px;
+    width: 70%;
+    height: auto;
+    justify-content: center;
+    align-items: center;
+    margin-left: 60%;
+    margin-right: 50px;
+    margin-top: 70px;
+    margin-bottom: 60px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+.form-container {
+    background-color: #fff;
+    border-radius: 10px;
+    padding-left: 40px;
+    padding-right: 60px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    width: 70%;
+    height: auto;
+    justify-content: center;
+    align-items: center;
+    margin-left: 60%;
+    margin-right: 50px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.logo {
+    display: flex;
+    justify-content: left;
+    margin-bottom: 20px;
+}
+
+.logo img {
+    border-radius: 50%;
+    width: 100px;
+    height: 100px;
+}
+
+.title {
+    text-align: left;
+    font-size: 35px;
+    font-weight: 600;
+    margin-bottom: 30px;
+}
+.titleForgot {
+    text-align: left;
+    font-size: 35px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    text-align: left;
+    color: gray;
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+.nameGroup {
+    display: flex;
+    gap: 20px;
+}
+.PhoneGroup {
+    display: flex;
+    /* gap: 0px; */
+}
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    font-weight: 300;
+    margin-bottom: 5px;
+    font-size: 16px;
+}
+.input-groupName label {
+    display: block;
+    font-weight: 300;
+    margin-bottom: 5px;
+    font-size: 16px;
+}
+.input-groupC_code label {
+    font-weight: 300;
+    font-size: 16px;
+}
+.input-groupPhone label {
+    display: block;
+    font-weight: 300;
+    margin-bottom: 5px;
+    font-size: 16px;
+}
+.input-groupName input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    background-color: #ffd2be;
+    margin-bottom: 10px;
+}
+.input-groupC_code input {
+    width: 30%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    background-color: #ffd2be;
+    margin-bottom: 10px;
+}
+.input-groupPhone input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    background-color: #ffd2be;
+    margin-bottom: 10px;
+}
+.input-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    background-color: #ffd2be;
+}
+
+.password-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.forgotpass-a {
+    font-size: 14px;
+    margin-left: 70%;
+    font-weight: 300;
+}
+.forgotpass-a a {
+    text-decoration: none;
+    color: #4e4c4c;
+}
+
+.sign-in-btn {
+    background-color: #ff803e;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    padding: 8px;
+    border-radius: 25px;
+    text-align: center;
+    cursor: pointer;
+    width: 50%;
+    margin-left: 100px;
+    margin-right: 50px;
+    display: block;
+    margin-top: 20px;
+}
+.sign-in-btnforgot {
+    background-color: #ff803e;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    padding: 8px;
+    border-radius: 25px;
+    text-align: center;
+    cursor: pointer;
+    width: 200px;
+    margin-left: 90px;
+    margin-right: 90px;
+    display: block;
+    margin-top: 20px;
+}
+.google-sign-in-btn {
+    border: none;
+    background-color: white;
+    /* border: 1px solid #ddd; */
+    border-radius: 20px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    font-size: 14px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    margin-top: 20px;
+    width: 300px;
+    height: 30px;
+    margin-left: 40px;
+    margin-right: 30px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.google-sign-in-btn img {
+    width: 24px;
+    height: 24px;
+}
+
+.footer {
+    text-align: center;
+    font-size: 14px;
+    color: gray;
+    margin-top: 20px;
+}
+
+.footer a {
+    color: #ff803e;
+    font-weight: bold;
+    text-decoration: none;
+}
+.img {
+    width: auto;
+    height: auto;
+}
+.illustration {
+    width: 600px;
+    height: 600px;
+}
+/* Right side illustration */
+.illustration-container {
+    flex: 1;
+    background-color: #ffd2be;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+@media (max-width: 1024px) {
+    .outer-container {
+        flex-direction: column;
+        align-items: center;
+        width: 90%;
+    }
+
+    .form-containerRegister,
+    .form-container {
+        width: 80%;
+        margin-left: 0;
+        margin-right: 0;
+        margin-top: 30px;
+        margin-bottom: 30px;
+    }
+
+    /* .img {
+        display: none;
+    } */
+
+    .illustration {
+        width: 400px;
+        height: 400px;
+    }
+
+    .sign-in-btn,
+    .sign-in-btnforgot {
+        width: 80%;
+        margin-left: 0;
+        margin-right: 0;
+        font-size: 16px;
+    }
+
+    .google-sign-in-btn {
+        width: 80%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .sign-in-container {
+        flex-direction: column;
+        height: auto;
+        padding: 10px;
+    }
+
+    .outer-container {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .form-containerRegister,
+    .form-container {
+        width: 90%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .illustration {
+        width: 300px;
+        height: 300px;
+        margin-top: 20px;
+    }
+
+    .sign-in-btn,
+    .sign-in-btnforgot {
+        width: 100%;
+        font-size: 16px;
+    }
+
+    .google-sign-in-btn {
+        width: 100%;
+    }
+
+    .input-groupName input,
+    .input-groupC_code input,
+    .input-groupPhone input,
+    .input-group input {
+        font-size: 16px;
+        padding: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .sign-in-container {
+        padding: 5px;
+    }
+
+    .form-containerRegister,
+    .form-container {
+        padding-left: 20px;
+        padding-right: 20px;
+        width: 90%;
+        margin-left: 0;
+        margin-right: 0;
+        margin-top: 20px;
+    }
+
+    .illustration {
+        width: 250px;
+        height: 250px;
+    }
+
+    .sign-in-btn,
+    .sign-in-btnforgot {
+        width: 100%;
+        font-size: 14px;
+    }
+
+    .google-sign-in-btn {
+        width: 100%;
+        font-size: 14px;
+    }
+
+    .input-groupName input,
+    .input-groupC_code input,
+    .input-groupPhone input,
+    .input-group input {
+        font-size: 14px;
+        padding: 10px;
+    }
+
+    .title {
+        font-size: 28px;
+    }
+
+    .footer {
+        font-size: 12px;
+    }
+    .forgotpass-a {
+        font-size: 14px;
+        margin-left: 60%;
+        font-weight: 300;
+    }
+}

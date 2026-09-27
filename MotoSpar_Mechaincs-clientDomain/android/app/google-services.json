@@ -1,0 +1,62 @@
+{
+  "project_info": {
+    "project_number": "938179568180",
+    "project_id": "motospar-mechanincs",
+    "storage_bucket": "motospar-mechanincs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:938179568180:android:2be4284063c0eb565ae061",
+        "android_client_info": {
+          "package_name": "com.motosparmechaincs"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "938179568180-1fca0fjj3b725ll6vgdkfq2b2763a216.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motosparmechaincs",
+            "certificate_hash": "f69d6cbe2b9c91077afb8e1783a1808039338c12"
+          }
+        },
+        {
+          "client_id": "938179568180-sdhih78dgfpd33pi9hj38r5kefkfet56.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motosparmechaincs",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "938179568180-nvkvvs6mt9b2hr2jm152b7hac9p5l7da.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7v210cikC1mOkq4JXFV67DMYVt9XyOZ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "938179568180-nvkvvs6mt9b2hr2jm152b7hac9p5l7da.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "938179568180-09ded7cdlun4nll6ldpb803j6ncskt2h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.motosparmechaincs"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

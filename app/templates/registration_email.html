@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title> MotoSpar Registration Email </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .email-header {
+            text-align: center;
+            padding-bottom: 20px;
+        }
+        .email-header img {
+            width: 100px;
+        }
+        .email-body {
+            padding: 20px;
+            border-top: 1px solid #eeeeee;
+        }
+        .email-footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #888888;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <img src="https://centrelocusdemo.cloud/centrelocus/wp-content/uploads/2024/02/CL-1.png" alt="MotoSpar Logo">
+            <h2>Welcome to MotoSpar!</h2>
+        </div>
+        <div class="email-body">
+            <p>Dear {{ name }},</p>
+            <p>Thank you for registering with MotoSpar!</p>
+            <p>Below are your registration details:</p>
+            <ul>
+                <li>Email: {{ email }}</li>
+            </ul>
+            <p>We look forward to having you on board.</p>
+            <p>Best regards,<br>Your MotoSpar App Team</p>
+        </div>
+        <div class="email-footer">
+            &copy; {{ current_year }} MotoSpar. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

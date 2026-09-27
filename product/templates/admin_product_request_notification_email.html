@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>New Product Request - MotoSpar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .email-header {
+            text-align: center;
+            padding-bottom: 20px;
+        }
+        .email-header img {
+            width: 100px; /* Adjust width for the logo */
+            margin-bottom: 20px;
+        }
+        .email-body {
+            padding: 20px;
+            color: #333333;
+            border-top: 1px solid #eeeeee;
+        }
+        .email-body h1 {
+            color: #F95F19; /* Primary color */
+        }
+        .email-footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #ffffff;
+            font-size: 0.9em;
+            background-color: #F95F19; /* Footer background color */
+            padding: 10px 0;
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header Section -->
+        <div class="email-header">
+            <h1>New Product Request</h1>
+        </div>
+
+        <!-- Body Section -->
+        <div class="email-body">
+            <p>Dear Admin,</p>
+            <p>You have received a new product request from <strong>{{ vendor_name }}</strong>.</p>
+            <p><strong>Email:</strong> {{ vendor_email }}</p>
+            <p><strong>Product Request Details:</strong></p>
+            <pre>{{ product_request_details }}</pre>
+            <p><strong>Submitted At:</strong> {{ created_at }}</p>
+            <p>Please take the necessary actions to respond to this request.</p>
+            <p>Best regards,<br>The MotoSpar Team</p>
+        </div>
+
+        <!-- Footer Section -->
+        <div class="email-footer">
+            &copy; {{ current_year }} MotoSpar. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

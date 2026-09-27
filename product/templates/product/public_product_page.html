@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ product.name|title }} | MotoSpar</title>
+    <style>
+      :root { color: #18232d; font-family: Arial, sans-serif; }
+      body { background: #f4f6f8; margin: 0; }
+      main { box-sizing: border-box; margin: 48px auto; max-width: 880px; padding: 0 20px; }
+      .brand { color: #f95f19; font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      article { background: #fff; border-radius: 18px; box-shadow: 0 10px 32px rgba(18, 34, 47, .09); display: grid; gap: 32px; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); margin-top: 12px; overflow: hidden; padding: 28px; }
+      .image { align-items: center; background: #eef1f4; border-radius: 12px; display: flex; justify-content: center; min-height: 250px; overflow: hidden; }
+      .image img { height: 100%; object-fit: cover; width: 100%; }
+      .fallback { color: #7a8792; font-size: 30px; }
+      h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.1; margin: 8px 0 12px; text-transform: capitalize; }
+      p { color: #58646e; line-height: 1.6; }
+      .meta { color: #66737e; font-size: 14px; margin: 18px 0; }
+      .price { color: #f95f19; font-size: 30px; font-weight: 700; margin: 16px 0 4px; }
+      .stock { color: #2c7b45; font-weight: 700; }
+      .out { color: #a64040; }
+      @media (max-width: 640px) { article { grid-template-columns: 1fr; padding: 20px; } main { margin: 24px auto; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">MotoSpar</div>
+      <article>
+        <div class="image">
+          {% if primary_image %}<img src="{{ primary_image }}" alt="{{ product.name }}">{% else %}<span class="fallback">MotoSpar product</span>{% endif %}
+        </div>
+        <div>
+          <div class="meta">{{ product.category.name|title }}{% if product.sub_category %} · {{ product.sub_category.name|title }}{% endif %}</div>
+          <h1>{{ product.name }}</h1>
+          {% if product.brand or product.model %}<div class="meta">{{ product.brand }}{% if product.model %} · {{ product.model }}{% endif %}{% if product.year %} · {{ product.year }}{% endif %}</div>{% endif %}
+          <p>{{ product.description }}</p>
+          {% if primary_variant %}<div class="price">₹{{ primary_variant.final_listing_price_on_motospar }}</div>{% endif %}
+          <div class="stock{% if not in_stock %} out{% endif %}">{% if in_stock %}In stock{% else %}Currently unavailable{% endif %}</div>
+        </div>
+      </article>
+    </main>
+  </body>
+</html>

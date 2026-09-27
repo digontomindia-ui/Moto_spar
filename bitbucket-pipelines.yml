@@ -1,0 +1,49 @@
+image: python:3.11
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Deploy to Motospar Django AWS
+          deployment: production
+          script:
+            - echo "🚀 Starting Deployment to EC2..."
+            - apt-get update && apt-get install -y openssh-client
+
+            - pipe: atlassian/ssh-run:0.4.1
+              variables:
+                SSH_USER: $EC2_SSH_USER
+                SERVER: $EC2_HOST
+                SSH_KEY: $EC2_SSH_KEY
+                COMMAND: |
+                  echo "📂 Navigating to project directory..."
+                  cd ~/django-backend/carpal || exit 1
+
+                  echo "🔄 Fetching latest code from main branch..."
+                  git status
+                  git pull origin main
+
+                  echo "🐍 Activating virtual environment..."
+                  source ~/django-backend/myprojectenv/bin/activate
+
+                  echo " Installing missing C-compilers and Cairo OS headers required by PyCairo..."
+                  sudo apt-get update && sudo apt-get install -y gcc python3-dev pkg-config libcairo2-dev
+
+                  echo "📦 Installing dependencies..."
+                  cd ~/django-backend/carpal
+                  pip install -r requirements.txt
+
+                  echo "🛠 Running migrations..."
+                  python manage.py migrate
+
+                  # echo "📁 Collecting static files..."
+                  # python manage.py collectstatic --noinput
+
+                  echo "🔁 Restarting Gunicorn service..."
+                  sudo systemctl restart gunicorn
+
+                  echo "⚙️ Restarting Celery workers..."
+                  sudo systemctl restart celery
+
+                  echo "✅ Deployment Completed Successfully!"
+
