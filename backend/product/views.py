@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta
 from itertools import groupby
 import io
 import json
+import math
+import re
 import tempfile
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -17,7 +19,7 @@ from django.contrib.auth import login, logout, authenticate
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Value, When
 from django.db.models.functions import TruncDate
 from django.db.utils import IntegrityError
 from django.http import JsonResponse, HttpResponseRedirect
@@ -47,7 +49,7 @@ from app.messages import (
     LIMIT_OFFSET_MESSAGE, PAGINATED_PRODUCTS_MESSAGE
     )
 from .models import (
-    Category, SubCategory, Product, ProductVariant, ProductImage, 
+    Category, SubCategory, Product, ProductCompatibility, ProductVariant, ProductImage,
     ProductRequest, ProductRequestImage
     )
 from .serializers import (
@@ -1445,16 +1447,17 @@ def _chatbot_product_url(request, product):
 
 def _chatbot_product_payload(request, product):
     """Keep the chatbot response small while returning current price and availability."""
-    variants = product.variants.filter(is_active=True)
-    in_stock_variants = variants.filter(in_stock=True)
-    is_in_stock = in_stock_variants.exists()
-    variant = (
-        in_stock_variants.order_by('final_listing_price_on_motospar').first()
-        or variants.order_by('final_listing_price_on_motospar').first()
+    variants = [variant for variant in product.variants.all() if variant.is_active]
+    in_stock_variants = [variant for variant in variants if variant.in_stock]
+    is_in_stock = bool(in_stock_variants)
+    variant = min(
+        in_stock_variants or variants,
+        key=lambda item: item.final_listing_price_on_motospar,
+        default=None,
     )
     image = None
     if variant:
-        first_image = variant.images.filter(is_active=True).first()
+        first_image = next((item for item in variant.images.all() if item.is_active), None)
         if first_image:
             image = first_image.image
 
@@ -1470,6 +1473,7 @@ def _chatbot_product_payload(request, product):
         'year': product.year,
         'rating': str(product.rating),
         'in_stock': is_in_stock,
+        'requires_fitment': product.requires_fitment,
         # Core n8n product fields. Keep price numeric and return a real, database-derived link.
         'price': float(variant.final_listing_price_on_motospar) if variant else None,
         'link': product_url,
@@ -1480,29 +1484,376 @@ def _chatbot_product_payload(request, product):
     }
 
 
+CHATBOT_DEFAULT_FIELDS = (
+    'id', 'name', 'category', 'price', 'link', 'status', 'in_stock',
+    'requires_fitment',
+)
+CHATBOT_ALLOWED_FIELDS = (
+    'id', 'name', 'description', 'category', 'sub_category', 'brand', 'model',
+    'year', 'rating', 'in_stock', 'price', 'link', 'status', 'requires_fitment',
+    'image', 'product_url', 'product_api_url',
+)
+
+
+def _chatbot_error(details, http_status=status.HTTP_400_BAD_REQUEST):
+    return JsonResponse({
+        'data': {'details': details, 'status': 'error', 'code': http_status},
+        'message': 'Invalid chatbot product request',
+        'status': False,
+    }, status=http_status)
+
+
+def _chatbot_params(request):
+    """Keep the legacy POST search usable while n8n uses the documented GET contract."""
+    return request.query_params if request.method == 'GET' else request.data
+
+
+def _chatbot_parse_bool(value, default=True):
+    if value in (None, ''):
+        return default
+    if isinstance(value, bool):
+        return value
+    values = {'true': True, '1': True, 'yes': True, 'false': False, '0': False, 'no': False}
+    try:
+        return values[str(value).strip().lower()]
+    except KeyError as error:
+        raise ValueError('in_stock must be a boolean') from error
+
+
+def _chatbot_parse_integer(params, name, default, minimum=1, maximum=None):
+    value = params.get(name)
+    if value in (None, ''):
+        return default
+    try:
+        value = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f'{name} must be an integer') from error
+    if value < minimum or (maximum is not None and value > maximum):
+        range_message = f'between {minimum} and {maximum}' if maximum else f'at least {minimum}'
+        raise ValueError(f'{name} must be {range_message}')
+    return value
+
+
+def _chatbot_parse_filters(params, page_size_default=20, page_size_max=50):
+    try:
+        min_price = (
+            Decimal(str(params.get('min_price')))
+            if params.get('min_price') not in (None, '') else None
+        )
+        max_price = (
+            Decimal(str(params.get('max_price')))
+            if params.get('max_price') not in (None, '') else None
+        )
+    except (InvalidOperation, TypeError, ValueError) as error:
+        raise ValueError('min_price and max_price must be numbers') from error
+
+    if min_price is not None and min_price < 0:
+        raise ValueError('min_price must be non-negative')
+    if max_price is not None and max_price < 0:
+        raise ValueError('max_price must be non-negative')
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise ValueError('min_price cannot exceed max_price')
+
+    year = params.get('year')
+    if year in (None, ''):
+        year = None
+    else:
+        try:
+            year = int(year)
+        except (TypeError, ValueError) as error:
+            raise ValueError('year must be an integer') from error
+        if year < 1:
+            raise ValueError('year must be a positive integer')
+
+    requested_fields = (params.get('fields') or '').strip()
+    if requested_fields:
+        fields = tuple(
+            field.strip() for field in requested_fields.split(',') if field.strip()
+        )
+        invalid_fields = set(fields) - set(CHATBOT_ALLOWED_FIELDS)
+        if invalid_fields:
+            raise ValueError(
+                f'Unsupported fields: {", ".join(sorted(invalid_fields))}'
+            )
+    else:
+        fields = CHATBOT_DEFAULT_FIELDS
+
+    return {
+        'category': (params.get('category') or '').strip(),
+        'make': (params.get('make') or '').strip(),
+        'model': (params.get('model') or '').strip(),
+        'engine_variant': (
+            params.get('engine_variant') or params.get('engine') or ''
+        ).strip(),
+        'year': year,
+        'min_price': min_price,
+        'max_price': max_price,
+        'in_stock': _chatbot_parse_bool(params.get('in_stock'), default=True),
+        'fields': fields,
+        'page': _chatbot_parse_integer(params, 'page', default=1),
+        'page_size': _chatbot_parse_integer(
+            params, 'page_size', default=page_size_default, maximum=page_size_max
+        ),
+    }
+
+
+def _chatbot_filtered_products(filters):
+    """
+    Apply all hard filters in SQL. Fitment-locked products are eligible only when
+    make, model, and year are all known and match ProductCompatibility.
+    """
+    products = Product.objects.filter(is_active=True).select_related(
+        'category', 'sub_category'
+    )
+
+    if filters['category']:
+        products = products.filter(category__name__iexact=filters['category'])
+
+    # This project currently has no Product.fuel_type field. Keep the public
+    # parameter contract forwards-compatible by intentionally ignoring it.
+    if filters['in_stock']:
+        products = products.filter(variants__is_active=True, variants__in_stock=True)
+    elif filters['min_price'] is not None or filters['max_price'] is not None:
+        products = products.filter(variants__is_active=True)
+
+    if filters['min_price'] is not None:
+        products = products.filter(
+            variants__final_listing_price_on_motospar__gte=filters['min_price']
+        )
+    if filters['max_price'] is not None:
+        products = products.filter(
+            variants__final_listing_price_on_motospar__lte=filters['max_price']
+        )
+
+    vehicle_info_complete = all(
+        (filters['make'], filters['model'], filters['year'] is not None)
+    )
+    if vehicle_info_complete:
+        compatibility = Q(
+            compatibilities__make__iexact=filters['make'],
+            compatibilities__model__iexact=filters['model'],
+            compatibilities__year_from__lte=filters['year'],
+            compatibilities__year_to__gte=filters['year'],
+        )
+        if filters['engine_variant']:
+            compatibility &= Q(
+                compatibilities__engine_variant__iexact=filters['engine_variant']
+            )
+        products = products.filter(
+            Q(requires_fitment=False) | (Q(requires_fitment=True) & compatibility)
+        ).distinct()
+        needs_vehicle_info = Product.objects.none()
+    else:
+        needs_vehicle_info = products.filter(requires_fitment=True).distinct()
+        products = products.filter(requires_fitment=False).distinct()
+
+    return products, needs_vehicle_info, vehicle_info_complete
+
+
+def _chatbot_with_catalog_data(products):
+    return products.prefetch_related(
+        Prefetch(
+            'variants',
+            queryset=ProductVariant.objects.filter(is_active=True).prefetch_related('images'),
+        )
+    )
+
+
+def _chatbot_select_fields(payload, fields):
+    return {field: payload.get(field) for field in fields}
+
+
+def _chatbot_needs_vehicle_info(products, limit):
+    return [
+        {
+            'id': str(product.id),
+            'name': product.name,
+            'category': product.category.name if product.category else None,
+            'requires_fitment': True,
+        }
+        for product in products.select_related('category').order_by('-rating', '-created_at')[:limit]
+    ]
+
+
+def _chatbot_vehicle_note(needs_vehicle_info, vehicle_info_complete):
+    if needs_vehicle_info and not vehicle_info_complete:
+        return (
+            'Vehicle make, model, and year are required before fitment-locked '
+            'products can be recommended.'
+        )
+    return None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def chatbot_all_products(request):
-    """Return the complete active catalog in the compact n8n product format."""
+    """
+    GET /api/chatbot/products/
+
+    Supports category, make, model, year, engine_variant, min_price, max_price,
+    in_stock, fields, page, and page_size. Results are hard-filtered in SQL and
+    capped at 50 products per page for LLM-safe catalog retrieval.
+    """
     try:
-        products = Product.objects.filter(is_active=True).select_related(
-            'category', 'sub_category'
-        ).order_by('-rating', '-created_at')
-        results = [_chatbot_product_payload(request, product) for product in products]
-        return JsonResponse({
-            'data': {
-                'products': results,
-                'count': len(results),
-                'status': 'success',
-                'code': status.HTTP_200_OK,
+        filters = _chatbot_parse_filters(request.query_params)
+        products, locked_products, vehicle_info_complete = _chatbot_filtered_products(filters)
+        total_count = products.count()
+        start = (filters['page'] - 1) * filters['page_size']
+        page_products = _chatbot_with_catalog_data(
+            products.order_by('-rating', '-created_at')[start:start + filters['page_size']]
+        )
+        results = [
+            _chatbot_select_fields(
+                _chatbot_product_payload(request, product), filters['fields']
+            )
+            for product in page_products
+        ]
+        needs_vehicle_info = _chatbot_needs_vehicle_info(
+            locked_products, filters['page_size']
+        )
+        note = _chatbot_vehicle_note(needs_vehicle_info, vehicle_info_complete)
+
+        data = {
+            'products': results,
+            'needs_vehicle_info': needs_vehicle_info,
+            'pagination': {
+                'page': filters['page'],
+                'page_size': filters['page_size'],
+                'total_count': total_count,
+                'total_pages': math.ceil(total_count / filters['page_size']) if total_count else 0,
             },
-            'message': 'All active chatbot products fetched successfully',
+            'count': len(results),
+            'status': 'success',
+            'code': status.HTTP_200_OK,
+        }
+        if note:
+            data['note'] = note
+        return JsonResponse({
+            'data': data,
+            'message': 'Chatbot products fetched successfully',
             'status': True,
         }, status=status.HTTP_200_OK)
-    except Exception as e:
+    except ValueError as error:
+        return _chatbot_error(str(error))
+    except Exception as error:
         return JsonResponse({
             'data': {
-                'details': str(e),
+                'details': str(error),
+                'status': 'error',
+                'code': status.HTTP_500_INTERNAL_SERVER_ERROR,
+            },
+            'message': INTERNAL_SERVER_ERROR_MESSAGE,
+            'status': False,
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _chatbot_rank_products(products, query):
+    """
+    TODO(pgvector): add a Product.embedding VectorField, generate embeddings when
+    products change, and order this already hard-filtered queryset by cosine distance.
+
+    pgvector is not installed in this project yet, so this SQL lexical fallback only
+    ranks the hard-filtered candidates; it never broadens the candidate set.
+    """
+    query_terms = [term for term in re.findall(r'[\\w-]+', query.lower()) if len(term) > 1]
+    if not query_terms:
+        return products.order_by('-rating', '-created_at')
+
+    score = Value(0, output_field=IntegerField())
+    for term in query_terms:
+        score += Case(
+            When(name__icontains=term, then=Value(4)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+        score += Case(
+            When(description__icontains=term, then=Value(2)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+        score += Case(
+            When(brand__icontains=term, then=Value(2)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+
+    return products.annotate(
+        chatbot_lexical_score=score
+    ).order_by('-chatbot_lexical_score', '-rating', '-created_at')
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def chatbot_product_search(request):
+    """
+    GET /api/chatbot/products/search/?q=quiet+street+exhaust
+
+    Hard filters (fitment, category, price, and stock) are applied in SQL before
+    ranking. The current implementation uses a documented lexical fallback until
+    Product.embedding is added with pgvector.
+    """
+    try:
+        params = _chatbot_params(request)
+        filters = _chatbot_parse_filters(params, page_size_default=10, page_size_max=20)
+        limit = _chatbot_parse_integer(
+            params, 'limit', default=10, minimum=1, maximum=20
+        )
+        query = (params.get('q') or params.get('query') or '').strip()
+
+        products, locked_products, vehicle_info_complete = _chatbot_filtered_products(filters)
+        hard_filter_count = products.count()
+        needs_vehicle_info = _chatbot_needs_vehicle_info(locked_products, limit)
+        note = _chatbot_vehicle_note(needs_vehicle_info, vehicle_info_complete)
+
+        if hard_filter_count == 0:
+            data = {
+                'products': [],
+                'needs_vehicle_info': needs_vehicle_info,
+                'count': 0,
+                'no_match': True,
+                'semantic_search_mode': 'lexical_fallback_no_pgvector',
+                'status': 'success',
+                'code': status.HTTP_200_OK,
+            }
+            if note:
+                data['note'] = note
+            return JsonResponse({
+                'data': data,
+                'message': 'No products matched the requested hard filters',
+                'status': True,
+            }, status=status.HTTP_200_OK)
+
+        ranked_products = _chatbot_with_catalog_data(
+            _chatbot_rank_products(products, query)[:limit]
+        )
+        results = [
+            _chatbot_select_fields(
+                _chatbot_product_payload(request, product), filters['fields']
+            )
+            for product in ranked_products
+        ]
+        data = {
+            'products': results,
+            'needs_vehicle_info': needs_vehicle_info,
+            'count': len(results),
+            'no_match': False,
+            'semantic_search_mode': 'lexical_fallback_no_pgvector',
+            'status': 'success',
+            'code': status.HTTP_200_OK,
+        }
+        if note:
+            data['note'] = note
+        return JsonResponse({
+            'data': data,
+            'message': 'Chatbot search completed with hard filters applied first',
+            'status': True,
+        }, status=status.HTTP_200_OK)
+    except ValueError as error:
+        return _chatbot_error(str(error))
+    except Exception as error:
+        return JsonResponse({
+            'data': {
+                'details': str(error),
                 'status': 'error',
                 'code': status.HTTP_500_INTERNAL_SERVER_ERROR,
             },
@@ -1513,114 +1864,70 @@ def chatbot_all_products(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def chatbot_product_search(request):
+def chatbot_validate_products(request):
     """
-    Return a small, live product result set for chatbot recommendations.
+    Validate LLM-selected IDs against live inventory before n8n sends a reply.
 
-    The endpoint is intentionally separate from the storefront search response so
-    n8n receives only recommendation-ready fields and a clickable product link.
+    Request body: {"product_ids": ["uuid", ...]}. At most 100 IDs are accepted.
     """
-    try:
+    product_ids = request.data.get('product_ids')
+    if not isinstance(product_ids, list):
+        return _chatbot_error('product_ids must be a JSON list')
+    if len(product_ids) > 100:
+        return _chatbot_error('product_ids cannot contain more than 100 values')
+
+    parsed_ids = []
+    invalid_products = []
+    for product_id in product_ids:
         try:
-            limit = int(request.data.get('limit', 5))
-        except (TypeError, ValueError):
-            return JsonResponse({
-                'data': {'details': 'limit must be an integer', 'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
-                'message': 'Invalid request data',
-                'status': False,
-            }, status=status.HTTP_400_BAD_REQUEST)
+            parsed_ids.append(uuid.UUID(str(product_id)))
+        except (TypeError, ValueError, AttributeError):
+            invalid_products.append({
+                'id': str(product_id),
+                'reason': 'invalid_product_id',
+            })
 
-        if not 1 <= limit <= 10:
-            return JsonResponse({
-                'data': {'details': 'limit must be between 1 and 10', 'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
-                'message': 'Invalid request data',
-                'status': False,
-            }, status=status.HTTP_400_BAD_REQUEST)
+    products = _chatbot_with_catalog_data(
+        Product.objects.filter(id__in=parsed_ids).select_related('category', 'sub_category')
+    )
+    products_by_id = {str(product.id): product for product in products}
+    valid_products = []
 
-        query = (request.data.get('query') or '').strip()
-        category = (request.data.get('category') or '').strip()
-        sub_category = (request.data.get('sub_category') or '').strip()
-        brand = (request.data.get('brand') or '').strip()
-        model = (request.data.get('model') or '').strip()
-        year = (request.data.get('year') or '').strip()
-        in_stock_only = request.data.get('in_stock_only', True)
-        if isinstance(in_stock_only, str):
-            in_stock_only = in_stock_only.lower() not in ('false', '0', 'no')
-
+    for product_id in product_ids:
+        normalized_id = str(product_id)
         try:
-            min_price = Decimal(str(request.data['min_price'])) if request.data.get('min_price') not in (None, '') else None
-            max_price = Decimal(str(request.data['max_price'])) if request.data.get('max_price') not in (None, '') else None
-        except (InvalidOperation, TypeError, ValueError):
-            return JsonResponse({
-                'data': {'details': 'min_price and max_price must be numbers', 'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
-                'message': 'Invalid request data',
-                'status': False,
-            }, status=status.HTTP_400_BAD_REQUEST)
-        if (min_price is not None and min_price < 0) or (max_price is not None and max_price < 0) or (
-            min_price is not None and max_price is not None and min_price > max_price
-        ):
-            return JsonResponse({
-                'data': {'details': 'price limits must be non-negative and min_price cannot exceed max_price', 'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
-                'message': 'Invalid request data',
-                'status': False,
-            }, status=status.HTTP_400_BAD_REQUEST)
+            normalized_id = str(uuid.UUID(normalized_id))
+        except (TypeError, ValueError, AttributeError):
+            continue
 
-        products = Product.objects.filter(is_active=True).select_related('category', 'sub_category')
-        if query:
-            products = products.filter(
-                Q(name__icontains=query)
-                | Q(description__icontains=query)
-                | Q(brand__icontains=query)
-                | Q(model__icontains=query)
-                | Q(category__name__icontains=query)
-                | Q(sub_category__name__icontains=query)
-            )
-        if category:
-            products = products.filter(category__name__icontains=category)
-        if sub_category:
-            products = products.filter(sub_category__name__icontains=sub_category)
-        if brand:
-            products = products.filter(brand__icontains=brand)
-        if model:
-            products = products.filter(model__icontains=model)
-        if year:
-            products = products.filter(year__icontains=year)
+        product = products_by_id.get(normalized_id)
+        if not product:
+            invalid_products.append({'id': normalized_id, 'reason': 'not_found'})
+            continue
+        if not product.is_active:
+            invalid_products.append({'id': normalized_id, 'reason': 'inactive'})
+            continue
 
-        # The bot should not recommend unavailable products by default. The price
-        # filters are applied to an active variant, not to an LLM-generated value.
-        if in_stock_only:
-            products = products.filter(variants__is_active=True, variants__in_stock=True)
-        elif min_price is not None or max_price is not None:
-            products = products.filter(variants__is_active=True)
-        if min_price is not None:
-            products = products.filter(variants__final_listing_price_on_motospar__gte=min_price)
-        if max_price is not None:
-            products = products.filter(variants__final_listing_price_on_motospar__lte=max_price)
+        payload = _chatbot_product_payload(request, product)
+        if not payload['in_stock']:
+            invalid_products.append({'id': normalized_id, 'reason': 'out_of_stock'})
+            continue
 
-        products = products.distinct().order_by('-rating', '-created_at')[:limit]
-        results = [_chatbot_product_payload(request, product) for product in products]
-        return JsonResponse({
-            'data': {
-                'products': results,
-                'count': len(results),
-                'status': 'success',
-                'code': status.HTTP_200_OK,
-            },
-            'message': 'Chatbot product recommendations fetched successfully',
-            'status': True,
-        }, status=status.HTTP_200_OK)
-    except Exception as e:
-        return JsonResponse({
-            'data': {
-                'details': str(e),
-                'status': 'error',
-                'code': status.HTTP_500_INTERNAL_SERVER_ERROR,
-            },
-            'message': INTERNAL_SERVER_ERROR_MESSAGE,
-            'status': False,
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        valid_products.append(
+            _chatbot_select_fields(payload, CHATBOT_DEFAULT_FIELDS)
+        )
 
-
+    return JsonResponse({
+        'data': {
+            'valid_products': valid_products,
+            'invalid_products': invalid_products,
+            'count': len(valid_products),
+            'status': 'success',
+            'code': status.HTTP_200_OK,
+        },
+        'message': 'Chatbot product validation completed',
+        'status': True,
+    }, status=status.HTTP_200_OK)
 # ? To toggle in stock for a variant pass id on URL
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsAdminUser])

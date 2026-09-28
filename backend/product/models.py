@@ -166,6 +166,10 @@ class Product(models.Model):
     brand = models.CharField(max_length=255, blank=True)
     model = models.CharField(max_length=255, blank=True)
     year = models.CharField(max_length=255, blank=True)
+    requires_fitment = models.BooleanField(
+        default=False,
+        help_text='Only recommend this product after confirming vehicle compatibility.',
+    )
 
     # -------------------------------
     # Tax Fields
@@ -226,6 +230,38 @@ class Product(models.Model):
     # * For Hard delete
     def hard_delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
+
+
+class ProductCompatibility(models.Model):
+    """A vehicle fitment range for a product that requires vehicle confirmation."""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='compatibilities',
+    )
+    make = models.CharField(max_length=255)
+    model = models.CharField(max_length=255)
+    year_from = models.IntegerField()
+    year_to = models.IntegerField()
+    engine_variant = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['make', 'model'], name='product_comp_make_model_idx'),
+            models.Index(fields=['product'], name='product_comp_product_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(year_to__gte=models.F('year_from')),
+                name='product_comp_valid_year_range',
+            ),
+        ]
+        ordering = ['make', 'model', 'year_from', 'year_to']
+
+    def __str__(self):
+        engine = f' ({self.engine_variant})' if self.engine_variant else ''
+        return f'{self.product.name}: {self.make} {self.model} {self.year_from}-{self.year_to}{engine}'
 
 
 class ProductVariant(models.Model):

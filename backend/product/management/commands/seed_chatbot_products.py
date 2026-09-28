@@ -2,7 +2,10 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from app.models import User
-from product.models import Category, Product, ProductImage, ProductVariant, SubCategory
+from product.models import (
+    Category, Product, ProductCompatibility, ProductImage, ProductVariant,
+    SubCategory,
+)
 
 
 class Command(BaseCommand):
@@ -23,6 +26,10 @@ class Command(BaseCommand):
             'quantity': 25,
             'features': 'Ceramic compound, low noise, easy fitment',
             'image': '/media/product_images/pro_bakeoil.jpeg',
+            'requires_fitment': True,
+            'compatibilities': [
+                {'make': 'Honda', 'model': 'Activa 6G', 'year_from': 2020, 'year_to': 2025, 'engine_variant': '110cc'},
+            ],
         },
         {
             'code': 'MS000002',
@@ -38,6 +45,7 @@ class Command(BaseCommand):
             'quantity': 18,
             'features': 'Bright LED beam, weather resistant, universal fit',
             'image': '/media/product_images/projector_light.jpeg',
+            'requires_fitment': False,
         },
         {
             'code': 'MS000003',
@@ -53,6 +61,10 @@ class Command(BaseCommand):
             'quantity': 8,
             'features': 'Lightweight alloy, corrosion resistant finish, direct fit',
             'image': '/media/product_images/bike_rims_pro.jpg',
+            'requires_fitment': True,
+            'compatibilities': [
+                {'make': 'Yamaha', 'model': 'R15', 'year_from': 2018, 'year_to': 2025, 'engine_variant': '155cc'},
+            ],
         },
         {
             'code': 'MS000004',
@@ -68,6 +80,10 @@ class Command(BaseCommand):
             'quantity': 14,
             'features': 'Custom fit, anti-slip base, water resistant, set of four',
             'image': '/media/product_images/inature.png',
+            'requires_fitment': True,
+            'compatibilities': [
+                {'make': 'Hyundai', 'model': 'Creta', 'year_from': 2020, 'year_to': 2025, 'engine_variant': ''},
+            ],
         },
         {
             'code': 'MS000005',
@@ -83,6 +99,10 @@ class Command(BaseCommand):
             'quantity': 30,
             'features': 'All-weather rubber, quiet operation, direct fit',
             'image': '/media/product_images/bumper_protector_pro.png',
+            'requires_fitment': True,
+            'compatibilities': [
+                {'make': 'Maruti Suzuki', 'model': 'Swift', 'year_from': 2018, 'year_to': 2025, 'engine_variant': ''},
+            ],
         },
         {
             'code': 'MS000006',
@@ -98,6 +118,7 @@ class Command(BaseCommand):
             'quantity': 20,
             'features': 'Multi-colour LEDs, remote control, simple installation',
             'image': '/media/product_images/interiorlight_kit.jpg',
+            'requires_fitment': False,
         },
     ]
 
@@ -144,6 +165,7 @@ class Command(BaseCommand):
                         'rating': '4.5',
                         'created_by': admin,
                         'is_active': True,
+                        'requires_fitment': item['requires_fitment'],
                     },
                 )
 
@@ -171,5 +193,11 @@ class Command(BaseCommand):
                     caption='Primary product image',
                     defaults={'image': item['image'], 'is_active': True},
                 )
+
+                ProductCompatibility.objects.filter(product=product).delete()
+                ProductCompatibility.objects.bulk_create([
+                    ProductCompatibility(product=product, **compatibility)
+                    for compatibility in item.get('compatibilities', [])
+                ])
 
         self.stdout.write(self.style.SUCCESS('Created or updated 6 local chatbot products.'))

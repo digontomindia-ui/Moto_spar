@@ -11,7 +11,7 @@ from rangefilter.filters import DateRangeFilter
 # Django App Imports
 from .models import (
     Category, SubCategory, Product, ProductVariant, ProductImage,
-    ProductRequest, ProductRequestImage, JobType
+    ProductRequest, ProductRequestImage, ProductCompatibility, JobType
 )
 
 
@@ -155,6 +155,14 @@ class ProductVariantInline(admin.TabularInline):
     
     # Nested ProductImageInline within the ProductVariantInline
     inlines = [ProductImageInline]
+
+
+class ProductCompatibilityInline(admin.TabularInline):
+    """Vehicle fitment rows maintained alongside their product."""
+
+    model = ProductCompatibility
+    extra = 0
+    fields = ('make', 'model', 'year_from', 'year_to', 'engine_variant')
 
 
 # ! Custom Admin class for ProductImage Model
@@ -305,10 +313,10 @@ class ProductAdmin(admin.ModelAdmin):
     
     list_display = (
         'id', 'name', 'code', 'category', 'sub_category', 'brand', 'model', 'year', 
-        'rating', 'is_gst_applicable', 'gst_rate', 'delivery_charge', 'delivery_time', 'created_by', 'created_at', 'last_modified_at', 'is_active'
+        'requires_fitment', 'rating', 'is_gst_applicable', 'gst_rate', 'delivery_charge', 'delivery_time', 'created_by', 'created_at', 'last_modified_at', 'is_active'
     )
     list_filter = (
-        'is_active', 'category', 'sub_category', 'model', 'year', 'is_gst_applicable', 'gst_rate',
+        'is_active', 'requires_fitment', 'category', 'sub_category', 'model', 'year', 'is_gst_applicable', 'gst_rate',
         ('created_at', DateRangeFilter),  # Enable date range filter for created_at
     )
     search_fields = (
@@ -318,7 +326,7 @@ class ProductAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'last_modified_at')
     
     fieldsets = (
-        (None, {'fields': ('category', 'sub_category', 'job_type', 'name', 'code', 'description', 'brand', 'model', 'year', 'rating', 
+        (None, {'fields': ('category', 'sub_category', 'job_type', 'name', 'code', 'description', 'brand', 'model', 'year', 'requires_fitment', 'rating',
                             'is_gst_applicable', 'gst_rate',
                             'delivery_charge', 'delivery_time', 'driver_fees', 'mechanic_fees', 'created_by', 'is_active')}),
         ('Timestamps', {
@@ -326,7 +334,7 @@ class ProductAdmin(admin.ModelAdmin):
         }),
     )
 
-    inlines = [ProductVariantInline]  # Register the inlines with ProductAdmin
+    inlines = [ProductVariantInline, ProductCompatibilityInline]
 
     def export_products_to_csv(self, request, queryset):
         """Export selected Product records to CSV."""

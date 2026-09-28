@@ -52,6 +52,7 @@ urlpatterns = [
     path('api/products/search/', views.search_product, name='search_product'),
     path('api/chatbot/products/', views.chatbot_all_products, name='chatbot_all_products'),
     path('api/chatbot/products/search/', views.chatbot_product_search, name='chatbot_product_search'),
+    path('api/chatbot/products/validate/', views.chatbot_validate_products, name='chatbot_validate_products'),
 
     # ! URLS for toggling product in-stock status.
     path('api/admin/variant/<uuid:variant_id>/toggle-stock/', views.toggle_in_variant_stock, name='toggle_in_variant_stock'),

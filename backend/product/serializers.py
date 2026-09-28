@@ -23,7 +23,7 @@ from rest_framework import serializers
 from app.models import User
 from .models import (
     Category, SubCategory, Product, ProductVariant, ProductImage, 
-    ProductRequest, ProductRequestImage
+    ProductRequest, ProductRequestImage, ProductCompatibility
 )
 from vendor.models import VendorStock
 from wishlist.models import WishlistItem
@@ -181,6 +181,13 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         return float(base_price)
 
 
+class ProductCompatibilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductCompatibility
+        fields = ['id', 'product', 'make', 'model', 'year_from', 'year_to', 'engine_variant']
+        read_only_fields = ['id']
+
+
 class ProductSerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), source='category', write_only=True)
     sub_category_id = serializers.PrimaryKeyRelatedField(queryset=SubCategory.objects.all(), source='sub_category', write_only=True)
@@ -189,13 +196,14 @@ class ProductSerializer(serializers.ModelSerializer):
     created_by = serializers.SerializerMethodField()  # Add a field for created_by
     average_rating = serializers.SerializerMethodField()  # Add a field for average rating
     variants = serializers.SerializerMethodField()  # Nested serializer for variants
+    compatibilities = ProductCompatibilitySerializer(many=True, read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'category', 'category_id', 'sub_category', 'sub_category_id',
             'job_type', 'code', 'description', 'rating', 'average_rating', 
-            'brand', 'model', 'year', 'variants',
+            'brand', 'model', 'year', 'requires_fitment', 'compatibilities', 'variants',
             'is_gst_applicable', 'gst_rate',
             'delivery_charge', 'delivery_time', 'driver_fees', 'mechanic_fees',
             'created_by', 'created_at', 'last_modified_at', 'is_active'
