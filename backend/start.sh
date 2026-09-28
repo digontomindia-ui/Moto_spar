@@ -2,7 +2,6 @@
 set -eu
 
 python manage.py migrate --noinput
-python manage.py seed_chatbot_products
 python manage.py collectstatic --noinput
 
 exec gunicorn carpal.wsgi:application \
