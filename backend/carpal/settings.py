@@ -153,16 +153,21 @@ DATABASES = {
         'PASSWORD': config('DATABASE_PASSWORD', default=''),
         'HOST': config('DATABASE_HOST', default=''),
         'PORT': config('DATABASE_PORT', default='5432'),
+        'OPTIONS': {
+            'sslmode': config('DATABASE_SSLMODE', default='prefer'),
+        },
     }
 }
 
 
-# ? Ensure that your production server is configured to use HTTPS.
-# SECURE_SSL_REDIRECT = True
-
-# ? This ensures that session and CSRF cookies are only sent over HTTPS.
-# SESSION_COOKIE_SECURE = True
-# CSRF_COOKIE_SECURE = True
+# Coolify terminates HTTPS at its reverse proxy and forwards this header.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='',
+    cast=lambda v: [origin.strip() for origin in v.split(',') if origin.strip()],
+)
 
 
 # Password validation
@@ -261,7 +266,11 @@ EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
 
 
 # ? CORS POLICY SETTINGS
-CORS_ORIGIN_WHITELIST = config('CORS_ORIGIN_WHITELIST', cast=lambda v: [s.strip() for s in v.split(',')])
+CORS_ORIGIN_WHITELIST = config(
+    'CORS_ORIGIN_WHITELIST',
+    default='',
+    cast=lambda v: [origin.strip() for origin in v.split(',') if origin.strip()],
+)
 
 
 CORS_ALLOW_METHODS = [ 'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT', ]
