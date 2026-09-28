@@ -27,5 +27,6 @@ each deployment.
 
 ## Startup behavior
 
-`start.sh` runs migrations and `collectstatic`, then serves Django with Gunicorn. No local
-PostgreSQL container or frontend application is included in this deployment.
+`start.sh` runs migrations, upserts the six chatbot products, and collects static files,
+then serves Django with Gunicorn. No local PostgreSQL container or frontend application is
+included in this deployment.
