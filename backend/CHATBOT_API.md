@@ -3,6 +3,17 @@
 Use the live API as the source of truth for catalog data and validate final LLM
 recommendations before sending them to a customer.
 
+## Authentication
+
+All endpoints in this document require an API key. Set a long random
+`CHATBOT_API_KEY` in the backend environment, then send the same value from n8n
+as the `X-API-Key` request header. Requests with no key or an incorrect key
+receive `401 Unauthorized`.
+
+```text
+X-API-Key: your-chatbot-api-key
+```
+
 ## List products
 
 `GET /api/chatbot/products/`

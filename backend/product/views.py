@@ -60,6 +60,7 @@ from .serializers import (
 from .utils import ( 
     notify_admin_about_product_request
     )
+from .authentication import ChatbotAPIKeyAuthentication
 
 
 # Create your views here.
@@ -1685,7 +1686,8 @@ def _chatbot_vehicle_note(needs_vehicle_info, vehicle_info_complete):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@authentication_classes([ChatbotAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
 def chatbot_all_products(request):
     """
     GET /api/chatbot/products/
@@ -1783,7 +1785,8 @@ def _chatbot_rank_products(products, query):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([AllowAny])
+@authentication_classes([ChatbotAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
 def chatbot_product_search(request):
     """
     GET /api/chatbot/products/search/?q=quiet+street+exhaust
@@ -1863,7 +1866,8 @@ def chatbot_product_search(request):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@authentication_classes([ChatbotAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
 def chatbot_validate_products(request):
     """
     Validate LLM-selected IDs against live inventory before n8n sends a reply.

@@ -42,6 +42,10 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=lambda v: [s.strip() fo
 # When it is not configured, the chatbot falls back to the public product API URL.
 PRODUCT_PAGE_URL_TEMPLATE = config('PRODUCT_PAGE_URL_TEMPLATE', default='')
 
+# Shared secret for server-to-server access to /api/chatbot/products/*.
+# An empty value deliberately rejects every chatbot API request.
+CHATBOT_API_KEY = config('CHATBOT_API_KEY', default='')
+
 
 # Application definition
 
