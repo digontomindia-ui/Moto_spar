@@ -83,7 +83,7 @@ android {
         applicationId "com.motosparapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
+        versionCode 9
         versionName "1.0"
     }
     buildTypes {
@@ -104,6 +104,8 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    // This library is not discovered by the current Android autolinker.
+    implementation project(':react-native-config')
     implementation project(':react-native-vector-icons')
     implementation 'com.facebook.fresco:fresco:2.0.0'
     implementation 'com.facebook.fresco:animated-gif:2.5.0'
