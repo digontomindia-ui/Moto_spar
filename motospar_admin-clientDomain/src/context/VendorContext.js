@@ -1228,29 +1228,44 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
         }
     };
     const UploadCsv = async (csv) => {
-        console.log("CSV FILE>>>", csv)
+        if (!csv) {
+            toast.error("Choose a CSV file before uploading.");
+            return;
+        }
+
         setloadingactivity(true);
         try {
             const formData = new FormData();
-
-            // Add product details
             formData.append("file", csv);
             const res = await postFormdatatAuth("admin/bulk-upload", formData);
-            console.log(">>res..UploadCsv.", res);
+            const data = res?.data || {};
+            const errors = Array.isArray(data.error_messages) ? data.error_messages : [];
 
-            if (res?.status === true) {
-                settoastMessage('File uploaded succesfully');
-                toast.success(res?.message);
-                setloadingactivity(false);
+            if (res?.status === true && errors.length === 0) {
+                settoastMessage("File uploaded successfully");
+                toast.success(res?.message || "CSV upload completed successfully.");
             } else {
-                toast.error(res?.message);
-                setloadingactivity(false);
-
-
+                const resultMessage = res?.message || "CSV upload could not be completed.";
+                toast.error(
+                    <div>
+                        <strong>{resultMessage}</strong>
+                        {errors.length > 0 && (
+                            <ul className="mb-0 mt-2 ps-3">
+                                {errors.slice(0, 5).map((error, index) => (
+                                    <li key={`${index}-${error}`}>{error}</li>
+                                ))}
+                            </ul>
+                        )}
+                        {errors.length > 5 && <div className="mt-1">And {errors.length - 5} more row error(s).</div>}
+                    </div>,
+                    { autoClose: 15000 }
+                );
             }
         } catch (e) {
+            toast.error("Could not upload the CSV. Please try again.");
+            console.error("CSV upload failed", e);
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in UploadCsv....VEndorcontext", e);
         }
     };
     const GetJobs = async (page, mechanic_email, job_status, payment_status) => {
