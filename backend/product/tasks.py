@@ -3,6 +3,7 @@
 # Standard library imports
 from datetime import timedelta
 from io import BytesIO
+from uuid import uuid4
 
 # Third-party imports
 from celery import shared_task
@@ -67,34 +68,44 @@ def process_csv_upload(file_path, user):
         else:
             raise ValueError("Unsupported file format. Only CSV and Excel files are allowed.")
 
+        # Strip a BOM (common in Excel-exported CSVs) and accidental spaces from
+        # column names before looking up fields.
+        df.columns = [str(column).lstrip("\ufeff").strip() for column in df.columns]
         df = df.where(pd.notnull(df), None)  # Replace NaN with None for easier handling
 
+        required_columns = {"category_name", "sub_category_name", "product_name"}
+        missing_columns = sorted(required_columns.difference(df.columns))
+        if missing_columns:
+            raise ValueError(
+                "CSV is missing required columns: " + ", ".join(missing_columns)
+            )
+
         # Prefetch existing categories and subcategories for optimization
-        categories = {cat.name: cat for cat in Category.objects.all()}
-        subcategories = {(subcat.category.name, subcat.name): subcat for subcat in SubCategory.objects.all()}
+        categories = {cat.name.strip().lower(): cat for cat in Category.objects.all()}
+        subcategories = {
+            (subcat.category.name.strip().lower(), subcat.name.strip().lower()): subcat
+            for subcat in SubCategory.objects.all()
+        }
 
         success_count = 0
         error_count = 0
         error_messages = []  # List to collect error messages
 
         # Process each row
-        for _, row in df.iterrows():
+        for row_index, row in df.iterrows():
+            csv_row_number = row_index + 2  # CSV row 1 is the header.
+            row = {key: csv_cell(value) for key, value in row.items()}
             try:
                 # Skip completely empty rows
-                if not any(row.values):
-                    error_messages.append("Skipped empty row.")
-                    error_count += 1
+                if not any(row.values()):
                     continue
-
-                # Strip leading/trailing spaces from all string fields
-                row = {k: v.strip() if isinstance(v, str) else v for k, v in row.items()}
 
                 # Process the row
                 _, variant = process_row(row, categories, subcategories, user)  # Pass user
                 success_count += 1
 
             except Exception as e:
-                error_messages.append(f"Error processing row {row}: {str(e)}")  # Collect error message
+                error_messages.append(f"Row {csv_row_number}: {str(e)}")
                 error_count += 1
 
         # Log results
@@ -104,6 +115,20 @@ def process_csv_upload(file_path, user):
     except Exception as e:
         log_error(f"Error processing file: {e}")
         raise ValueError(f"Failed to process file: {e}")
+
+
+def csv_text(value):
+    """Return a safe, trimmed string for optional CSV cells (including blanks)."""
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def csv_cell(value):
+    """Normalize blank/string cells while preserving numeric values for parsing."""
+    if value is None or pd.isna(value):
+        return ""
+    return value.strip() if isinstance(value, str) else value
 
 
 
@@ -129,10 +154,10 @@ def process_row(row, categories, subcategories, user):
             raise ValueError(error_msg)
 
         # Normalize category/subcategory names
-        category_name = row['category_name'].strip().lower()
-        sub_category_name = row['sub_category_name'].strip().lower()
+        category_name = csv_text(row.get('category_name')).lower()
+        sub_category_name = csv_text(row.get('sub_category_name')).lower()
 
-        row['product_name'] = row['product_name'].strip()
+        row['product_name'] = csv_text(row.get('product_name'))
         
         # Validate category & subcategory existence
         category = categories.get(category_name)
@@ -148,7 +173,11 @@ def process_row(row, categories, subcategories, user):
             raise ValueError(error_msg)
 
         # Check if SKU already exists (for consistency with single product addition)
-        sku = row.get('sku', '').strip()
+        sku = csv_text(row.get('sku'))
+        if not sku:
+            # The CSV template marks SKU as optional, but ProductVariant requires
+            # a unique value in the database.
+            sku = f"MS{uuid4().hex[:14].upper()}"
         if sku and ProductVariant.objects.filter(sku=sku).exists():
             error_msg = f"SKU '{sku}' already exists"
             log_error(error_msg)
@@ -182,11 +211,11 @@ def process_row(row, categories, subcategories, user):
             product = Product(
                 category=category,
                 sub_category=subcategory,
-                name=row['product_name'].strip(),  # Ensure no leading/trailing spaces
-                description=row.get('description', '').strip(),
-                brand=row.get('brand', '').strip(),
-                model=row.get('model', '').strip(),
-                year=row.get('year', ''),
+                name=csv_text(row.get('product_name')),
+                description=csv_text(row.get('description')),
+                brand=csv_text(row.get('brand')),
+                model=csv_text(row.get('model')),
+                year=csv_text(row.get('year')),
                 delivery_charge=num_val(row.get('delivery_charge')),
                 delivery_time=num_val(row.get('delivery_time'), is_decimal=False),
                 driver_fees=num_val(row.get('driver_fees')),
@@ -210,15 +239,15 @@ def process_row(row, categories, subcategories, user):
                 final_listing_price_on_motospar=num_val(row.get('final_listing_price_on_motospar')),
                 final_profit_per_part=num_val(row.get('final_profit_per_part')),
                 discount=num_val(row.get('discount')),  # will be 0 if blank
-                in_stock=True if str(row.get('in_stock')).strip().lower() in ["yes", "true", "1"] else False,
+                in_stock=True if csv_text(row.get('in_stock')).lower() in ["yes", "true", "1"] else False,
                 sold_quantity=num_val(row.get('sold_quantity'), is_decimal=False),
                 sku=sku,
-                color=(row.get('color') or "").strip(),
-                size=(row.get('size') or "").strip(),
+                color=csv_text(row.get('color')),
+                size=csv_text(row.get('size')),
                 weight=num_val(row.get('weight')),
-                dimensions=(row.get('dimensions') or "").strip(),
-                material=(row.get('material') or "").strip(),
-                features=(row.get('features') or "").strip()
+                dimensions=csv_text(row.get('dimensions')),
+                material=csv_text(row.get('material')),
+                features=csv_text(row.get('features'))
             )
             variant.save()
             log_info(f"ProductVariant created successfully for product: {product.name} (Variant ID: {variant.id})")
@@ -239,8 +268,8 @@ def process_row(row, categories, subcategories, user):
             return product, variant
 
     except Exception as e:
-        log_error(f"Error processing row: {row}. Error: {e}")
-        raise ValueError(f"Failed to process row: {row}. Error: {e}")
+        log_error(f"Error processing product row '{csv_text(row.get('product_name'))}': {e}")
+        raise ValueError(str(e)) from e
 
 
 # ? This function sends an email notification to the recipient
@@ -363,7 +392,7 @@ def bulk_product_upload_sync(request):
                 'code': status.HTTP_200_OK if error_count == 0 else status.HTTP_400_BAD_REQUEST
             },
             'message': message,
-            'status': True
+            'status': error_count == 0
         }
         
         return JsonResponse(response_data, status=status.HTTP_200_OK if error_count == 0 else status.HTTP_400_BAD_REQUEST)
