@@ -9,9 +9,7 @@ import {
     postAuth,
     postCommon,
     postFormdatatAuth,
-    postGoogle,
     postUser,
-    postUserLogout,
 } from "../repository/Repo";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -1227,7 +1225,32 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
             console.log("errorr... in GetDummyTemplete....VEndorcontext", e);
         }
     };
-    const UploadCsv = async (csv) => {
+    const PreviewBulkUpload = async (csv) => {
+        if (!csv) {
+            toast.error("Choose a CSV file before previewing.");
+            return null;
+        }
+
+        setloadingactivity(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", csv);
+            const res = await postFormdatatAuth("admin/bulk-upload/preview", formData);
+            if (res?.status !== true) {
+                toast.error(res?.message || "Could not validate this CSV file.");
+                return null;
+            }
+            return res;
+        } catch (e) {
+            toast.error("Could not validate this CSV file. Please try again.");
+            console.error("CSV preview failed", e);
+            return null;
+        } finally {
+            setloadingactivity(false);
+        }
+    };
+
+    const UploadCsv = async (csv, createMissingSubcategories = []) => {
         if (!csv) {
             toast.error("Choose a CSV file before uploading.");
             return;
@@ -1237,6 +1260,9 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
         try {
             const formData = new FormData();
             formData.append("file", csv);
+            if (createMissingSubcategories.length > 0) {
+                formData.append("create_missing_subcategories", JSON.stringify(createMissingSubcategories));
+            }
             const res = await postFormdatatAuth("admin/bulk-upload", formData);
             const data = res?.data || {};
             const errors = Array.isArray(data.error_messages) ? data.error_messages : [];
@@ -1261,9 +1287,11 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                     { autoClose: 15000 }
                 );
             }
+            return res;
         } catch (e) {
             toast.error("Could not upload the CSV. Please try again.");
             console.error("CSV upload failed", e);
+            return null;
         } finally {
             setloadingactivity(false);
         }
@@ -1414,6 +1442,7 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 deleteDriver,
                 GetDummyTemplete,
                 vendorVerfication,
+                PreviewBulkUpload,
                 UploadCsv,
                 AllMechanics,
                 mechanics,

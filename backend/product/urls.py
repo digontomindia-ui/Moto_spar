@@ -82,6 +82,7 @@ urlpatterns = [
 
     # ? Views from tasks.py
     # ! URL for bulk product upload.
+    path('api/admin/bulk-upload/preview/', tasks.bulk_product_upload_preview, name='bulk_product_upload_preview'),
     path('api/admin/bulk-upload/', tasks.bulk_product_upload_sync, name='bulk_product_upload'),
 
     # ! URL for downloading the bulk upload template (CSV/Excel).

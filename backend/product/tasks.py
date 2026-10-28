@@ -3,6 +3,7 @@
 # Standard library imports
 from datetime import timedelta
 from io import BytesIO
+import json
 from uuid import uuid4
 
 # Third-party imports
@@ -55,7 +56,7 @@ def test_task():
 # ***** Utility Function required for bulk upload *****
 # ? This will process the whole CSV file and create Product and ProductVariant objects
 # ? It also call the download_and_save_image task to download and save images asynchronously
-def process_csv_upload(file_path, user):
+def process_csv_upload(file_path, user, create_missing_subcategories=None):
     """
     Processes a CSV file for bulk product upload.
     """
@@ -86,6 +87,42 @@ def process_csv_upload(file_path, user):
             (subcat.category.name.strip().lower(), subcat.name.strip().lower()): subcat
             for subcat in SubCategory.objects.all()
         }
+
+        # Only create taxonomy entries explicitly selected by an admin after
+        # reviewing the CSV preview. Never infer or create them silently.
+        selected_subcategories = create_missing_subcategories or []
+        if selected_subcategories:
+            missing = inspect_bulk_upload_taxonomy(df)["missing_subcategories"]
+            missing_keys = {
+                (item["category_name"].lower(), item["sub_category_name"].lower())
+                for item in missing
+            }
+            selected_keys = set()
+            for item in selected_subcategories:
+                if not isinstance(item, dict):
+                    raise ValueError("Invalid subcategory selection.")
+                category_name = csv_text(item.get("category_name")).lower()
+                sub_category_name = csv_text(item.get("sub_category_name")).lower()
+                key = (category_name, sub_category_name)
+                if key not in missing_keys:
+                    raise ValueError(
+                        f"'{sub_category_name}' is not a missing subcategory for '{category_name}' in this CSV."
+                    )
+                selected_keys.add(key)
+
+            with transaction.atomic():
+                for category_name, sub_category_name in selected_keys:
+                    category = categories.get(category_name)
+                    if not category:
+                        raise ValueError(
+                            f"Category '{category_name}' does not exist; create the category before its subcategory."
+                        )
+                    subcategory, _ = SubCategory.objects.get_or_create(
+                        category=category,
+                        name=sub_category_name,
+                        defaults={"is_active": True},
+                    )
+                    subcategories[(category_name, sub_category_name)] = subcategory
 
         success_count = 0
         error_count = 0
@@ -129,6 +166,63 @@ def csv_cell(value):
     if value is None or pd.isna(value):
         return ""
     return value.strip() if isinstance(value, str) else value
+
+
+def inspect_bulk_upload_taxonomy(df):
+    """Report category and subcategory labels in a parsed upload that are missing."""
+    categories = {category.name.strip().lower(): category for category in Category.objects.all()}
+    subcategories = {
+        (subcategory.category.name.strip().lower(), subcategory.name.strip().lower())
+        for subcategory in SubCategory.objects.all()
+    }
+    missing_categories = {}
+    missing_subcategories = {}
+
+    for row_index, row in df.iterrows():
+        category_name = csv_text(row.get("category_name")).lower()
+        subcategory_name = csv_text(row.get("sub_category_name")).lower()
+        if not category_name or not subcategory_name:
+            continue
+        csv_row_number = int(row_index) + 2
+        if category_name not in categories:
+            missing_categories.setdefault(category_name, set()).add(csv_row_number)
+        elif (category_name, subcategory_name) not in subcategories:
+            missing_subcategories.setdefault((category_name, subcategory_name), set()).add(csv_row_number)
+
+    return {
+        "missing_categories": [
+            {"category_name": name, "rows": sorted(rows)}
+            for name, rows in sorted(missing_categories.items())
+        ],
+        "missing_subcategories": [
+            {
+                "category_name": category_name,
+                "sub_category_name": subcategory_name,
+                "rows": sorted(rows),
+            }
+            for (category_name, subcategory_name), rows in sorted(missing_subcategories.items())
+        ],
+    }
+
+
+def read_bulk_upload_dataframe(upload):
+    """Read a CSV/XLSX upload and validate its expected taxonomy columns."""
+    filename = getattr(upload, "name", "")
+    if not filename and isinstance(upload, str):
+        filename = upload
+    if filename.lower().endswith(".csv"):
+        df = pd.read_csv(upload)
+    elif filename.lower().endswith(".xlsx"):
+        df = pd.read_excel(upload)
+    else:
+        raise ValueError("Unsupported file format. Only CSV and Excel files are allowed.")
+
+    df.columns = [str(column).lstrip("\ufeff").strip() for column in df.columns]
+    required_columns = {"category_name", "sub_category_name", "product_name"}
+    missing_columns = sorted(required_columns.difference(df.columns))
+    if missing_columns:
+        raise ValueError("CSV is missing required columns: " + ", ".join(missing_columns))
+    return df
 
 
 
@@ -359,6 +453,23 @@ def bulk_upload_task(file_path, recipient_emails):
 # ! API Views for bulk upload
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def bulk_product_upload_preview(request):
+    """Preview taxonomy labels in a CSV before an admin chooses to create any."""
+    if request.user.account_type != "admin":
+        return JsonResponse({"message": "Only admins can preview and create upload subcategories.", "status": False}, status=403)
+    if "file" not in request.FILES:
+        return JsonResponse({"message": "No file provided.", "status": False}, status=400)
+
+    try:
+        df = read_bulk_upload_dataframe(request.FILES["file"])
+        taxonomy = inspect_bulk_upload_taxonomy(df)
+        return JsonResponse({"data": taxonomy, "status": True})
+    except Exception as exc:
+        return JsonResponse({"message": str(exc), "status": False}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def bulk_product_upload_sync(request):
     """
     Synchronous bulk upload endpoint to process CSV/Excel file immediately without Celery.
@@ -375,12 +486,27 @@ def bulk_product_upload_sync(request):
         return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
     
     file = request.FILES['file']
+    create_missing_subcategories = []
+    raw_selection = request.data.get("create_missing_subcategories")
+    if raw_selection:
+        if request.user.account_type != "admin":
+            return JsonResponse({"message": "Only admins can create subcategories during upload.", "status": False}, status=403)
+        try:
+            create_missing_subcategories = json.loads(raw_selection)
+            if not isinstance(create_missing_subcategories, list):
+                raise ValueError
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return JsonResponse({"message": "Invalid subcategory selection.", "status": False}, status=400)
     file_path = default_storage.save(file.name, file)  # Save temporarily
     # Get the full path to the uploaded file
     full_file_path = default_storage.path(file_path)
     
     try:
-        success_count, error_count, error_messages = process_csv_upload(full_file_path, request.user)  # Pass the full path
+        success_count, error_count, error_messages = process_csv_upload(
+            full_file_path,
+            request.user,
+            create_missing_subcategories=create_missing_subcategories,
+        )  # Pass the full path
         message = f"Bulk upload completed. Success: {success_count}, Errors: {error_count}"
         
         response_data = {

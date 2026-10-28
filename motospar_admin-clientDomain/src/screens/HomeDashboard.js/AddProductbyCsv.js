@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState, useCallback } from "react";
 import Sidebar from "../../components/Atoms/Sidebar";
 import Header from "../../components/HOC/Header";
 import ProductForm from "../../components/Atoms/ProductForm";
-import { Button, Offcanvas, Col, Row, Card } from "react-bootstrap";
+import { Button, Offcanvas, Col, Row, Card, Alert, Form } from "react-bootstrap";
 import { VendorContext } from "../../context/VendorContext";
 import ToastComponent from "../../components/HOC/Toast";
 import ProductImageUpload from "../../components/Atoms/ProductImageUpload";
@@ -30,6 +30,8 @@ const AddProductbyCsv = () => {
         AddProduct,
         toastMessage,
         UploadCsv,
+        PreviewBulkUpload,
+        loadingactivity,
     } = useContext(VendorContext);
 
     const [showToast, setShowToast] = useState(false);
@@ -68,21 +70,58 @@ const AddProductbyCsv = () => {
         setProductDetails(data);
     };
 
-    const handleSave = () => {
-        UploadCsv(csvFile);
-        // AddProduct(productDetails);
-        setShowToast(true);
-
-        // Automatically hide the toast after 5 seconds
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000);
-    };
     const [csvFile, setCsvFile] = useState(null);
     const [csvContent, setCsvContent] = useState([]);
+    const [taxonomyPreview, setTaxonomyPreview] = useState(null);
+    const [selectedSubcategories, setSelectedSubcategories] = useState([]);
+
+    const handleSave = async () => {
+        if (!csvFile) return;
+        setTaxonomyPreview(null);
+        setSelectedSubcategories([]);
+        const result = await PreviewBulkUpload(csvFile);
+        if (!result) return;
+
+        const preview = result.data || {};
+        setTaxonomyPreview(preview);
+        const missingCategories = preview.missing_categories || [];
+        const missingSubcategories = preview.missing_subcategories || [];
+        if (missingCategories.length > 0) return;
+        if (missingSubcategories.length === 0) {
+            const uploadResult = await UploadCsv(csvFile);
+            if (uploadResult?.status === true) {
+                setCsvFile(null);
+                setCsvContent([]);
+                setTaxonomyPreview(null);
+            }
+        }
+    };
+
+    const handleCreateAndUpload = async () => {
+        const uploadResult = await UploadCsv(csvFile, selectedSubcategories);
+        if (uploadResult?.status === true) {
+            setCsvFile(null);
+            setCsvContent([]);
+            setTaxonomyPreview(null);
+            setSelectedSubcategories([]);
+        }
+    };
+
+    const toggleSubcategorySelection = (item) => {
+        const key = `${item.category_name.toLowerCase()}::${item.sub_category_name.toLowerCase()}`;
+        setSelectedSubcategories((current) => {
+            const exists = current.some(
+                (entry) => `${entry.category_name.toLowerCase()}::${entry.sub_category_name.toLowerCase()}` === key
+            );
+            return exists
+                ? current.filter((entry) => `${entry.category_name.toLowerCase()}::${entry.sub_category_name.toLowerCase()}` !== key)
+                : [...current, { category_name: item.category_name, sub_category_name: item.sub_category_name }];
+        });
+    };
 
     const onDropCSV = useCallback((acceptedFiles) => {
         const file = acceptedFiles[0];
+        if (!file) return;
         // UploadCsv(file)
         setShowToast(true);
 
@@ -91,6 +130,8 @@ const AddProductbyCsv = () => {
             setShowToast(false);
         }, 5000);
         setCsvFile(file);
+        setTaxonomyPreview(null);
+        setSelectedSubcategories([]);
 
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -148,9 +189,8 @@ const AddProductbyCsv = () => {
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-center m-4">
                     <h4 className="mb-3 mb-md-0">Add Product by csv file</h4>
                     <div className="d-flex gap-2">
-                        <Button variant="outline-warning">Save to Draft</Button>
-                        <Button className="savebtn" onClick={handleSave}>
-                            Save
+                        <Button className="savebtn" onClick={handleSave} disabled={loadingactivity || !csvFile}>
+                            {loadingactivity ? "Checking..." : "Validate CSV"}
                         </Button>
                     </div>
                 </div>
@@ -218,6 +258,61 @@ const AddProductbyCsv = () => {
                                     ))}
                                 </pre>
                             </div>
+                        </Card.Body>
+                    </Card>
+                )}
+
+                {taxonomyPreview && (
+                    <Card className="mx-auto shadow-sm body mt-4 mb-4" style={{ maxWidth: "700px", width: "100%" }}>
+                        <Card.Body>
+                            {(taxonomyPreview.missing_categories || []).length > 0 && (
+                                <Alert variant="danger">
+                                    <strong>Some categories are not in the system.</strong>
+                                    <ul className="mb-0 mt-2">
+                                        {taxonomyPreview.missing_categories.map((item) => (
+                                            <li key={item.category_name}>{item.category_name} — CSV row(s): {item.rows.join(", ")}</li>
+                                        ))}
+                                    </ul>
+                                    Add these categories first, then validate the CSV again.
+                                </Alert>
+                            )}
+                            {(taxonomyPreview.missing_categories || []).length === 0 &&
+                                (taxonomyPreview.missing_subcategories || []).length > 0 && (
+                                    <>
+                                        <Alert variant="warning">
+                                            These subcategories are not in the system yet. Select only the ones you want to create.
+                                            The selected subcategories will be created under their listed categories, then the CSV upload will run.
+                                        </Alert>
+                                        <div className="d-flex flex-column gap-2 mb-3">
+                                            {taxonomyPreview.missing_subcategories.map((item) => {
+                                                const key = `${item.category_name.toLowerCase()}::${item.sub_category_name.toLowerCase()}`;
+                                                const checked = selectedSubcategories.some(
+                                                    (entry) => `${entry.category_name.toLowerCase()}::${entry.sub_category_name.toLowerCase()}` === key
+                                                );
+                                                return (
+                                                    <Form.Check
+                                                        key={key}
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => toggleSubcategorySelection(item)}
+                                                        label={`Create “${item.sub_category_name}” under “${item.category_name}” (CSV row${item.rows.length === 1 ? "" : "s"}: ${item.rows.join(", ")})`}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+                                        <Button
+                                            className="savebtn"
+                                            onClick={handleCreateAndUpload}
+                                            disabled={loadingactivity || selectedSubcategories.length === 0}
+                                        >
+                                            {loadingactivity ? "Uploading..." : "Create selected and upload"}
+                                        </Button>
+                                    </>
+                                )}
+                            {(taxonomyPreview.missing_categories || []).length === 0 &&
+                                (taxonomyPreview.missing_subcategories || []).length === 0 && (
+                                    <Alert variant="success" className="mb-0">Category and subcategory names are ready. Check the upload result notification.</Alert>
+                                )}
                         </Card.Body>
                     </Card>
                 )}

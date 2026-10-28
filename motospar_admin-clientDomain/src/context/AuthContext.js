@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
-import { postGoogle, postUser, postUserLogout } from "../repository/Repo";
+import { postUser } from "../repository/Repo";
 import { useNavigate } from "react-router-dom";
 
 import { useGoogleLogin } from "@react-oauth/google";
