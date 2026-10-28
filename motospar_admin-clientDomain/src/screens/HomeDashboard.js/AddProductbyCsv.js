@@ -84,6 +84,7 @@ const AddProductbyCsv = () => {
 
         const preview = result.data || {};
         setTaxonomyPreview(preview);
+        if ((preview.validation_errors || []).length > 0) return;
         const missingCategories = preview.missing_categories || [];
         const missingSubcategories = preview.missing_subcategories || [];
         if (missingCategories.length > 0) return;
@@ -98,6 +99,7 @@ const AddProductbyCsv = () => {
     };
 
     const handleCreateAndUpload = async () => {
+        if ((taxonomyPreview?.validation_errors || []).length > 0) return;
         const uploadResult = await UploadCsv(csvFile, selectedSubcategories);
         if (uploadResult?.status === true) {
             setCsvFile(null);
@@ -265,6 +267,20 @@ const AddProductbyCsv = () => {
                 {taxonomyPreview && (
                     <Card className="mx-auto shadow-sm body mt-4 mb-4" style={{ maxWidth: "700px", width: "100%" }}>
                         <Card.Body>
+                            {(taxonomyPreview.validation_errors || []).length > 0 && (
+                                <Alert variant="danger">
+                                    <strong>Fix these CSV values before uploading.</strong>
+                                    <div className="mt-1">No products were uploaded. Correct the listed rows, then select the corrected CSV and validate it again.</div>
+                                    <ul className="mb-0 mt-2">
+                                        {taxonomyPreview.validation_errors.slice(0, 10).map((error, index) => (
+                                            <li key={`${index}-${error}`}>{error}</li>
+                                        ))}
+                                    </ul>
+                                    {taxonomyPreview.validation_errors.length > 10 && (
+                                        <div className="mt-1">And {taxonomyPreview.validation_errors.length - 10} more issue(s).</div>
+                                    )}
+                                </Alert>
+                            )}
                             {(taxonomyPreview.missing_categories || []).length > 0 && (
                                 <Alert variant="danger">
                                     <strong>Some categories are not in the system.</strong>
@@ -303,14 +319,15 @@ const AddProductbyCsv = () => {
                                         <Button
                                             className="savebtn"
                                             onClick={handleCreateAndUpload}
-                                            disabled={loadingactivity || selectedSubcategories.length === 0}
+                                            disabled={loadingactivity || selectedSubcategories.length === 0 || (taxonomyPreview.validation_errors || []).length > 0}
                                         >
                                             {loadingactivity ? "Uploading..." : "Create selected and upload"}
                                         </Button>
                                     </>
                                 )}
                             {(taxonomyPreview.missing_categories || []).length === 0 &&
-                                (taxonomyPreview.missing_subcategories || []).length === 0 && (
+                                (taxonomyPreview.missing_subcategories || []).length === 0 &&
+                                (taxonomyPreview.validation_errors || []).length === 0 && (
                                     <Alert variant="success" className="mb-0">Category and subcategory names are ready. Check the upload result notification.</Alert>
                                 )}
                         </Card.Body>

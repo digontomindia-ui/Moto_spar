@@ -2,6 +2,7 @@
 
 # Standard library imports
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 import json
 from uuid import uuid4
@@ -175,6 +176,8 @@ def inspect_bulk_upload_taxonomy(df):
         (subcategory.category.name.strip().lower(), subcategory.name.strip().lower())
         for subcategory in SubCategory.objects.all()
     }
+
+
     missing_categories = {}
     missing_subcategories = {}
 
@@ -203,6 +206,34 @@ def inspect_bulk_upload_taxonomy(df):
             for (category_name, subcategory_name), rows in sorted(missing_subcategories.items())
         ],
     }
+
+
+def inspect_bulk_upload_rows(df):
+    """Return actionable row errors detectable before creating any products."""
+    errors = []
+    if "discount" not in df.columns:
+        return errors
+
+    for row_index, value in df["discount"].items():
+        raw_value = csv_text(value)
+        if not raw_value:
+            continue
+        row_number = int(row_index) + 2
+        try:
+            discount = Decimal(raw_value)
+        except (InvalidOperation, TypeError, ValueError):
+            errors.append(
+                f"Row {row_number}: Discount must be a number from 0 to 100 (percentage)."
+            )
+            continue
+
+        if not discount.is_finite() or discount < 0 or discount > 100:
+            errors.append(
+                f"Row {row_number}: Discount must be 0–100%. You entered {raw_value}. "
+                "Enter 5 for a 5% discount, not the discount amount in rupees."
+            )
+
+    return errors
 
 
 def read_bulk_upload_dataframe(upload):
@@ -299,6 +330,20 @@ def process_row(row, categories, subcategories, user):
                 return float(value) if is_decimal else int(value)
             except Exception:
                 return 0.0 if is_decimal else 0
+
+        raw_discount = csv_text(row.get('discount'))
+        if raw_discount:
+            try:
+                discount_value = Decimal(raw_discount)
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError("Discount must be a number from 0 to 100 (percentage).")
+            if not discount_value.is_finite() or discount_value < 0 or discount_value > 100:
+                raise ValueError(
+                    f"Discount must be 0–100%. You entered {raw_discount}. "
+                    "Enter 5 for a 5% discount, not the discount amount in rupees."
+                )
+        else:
+            discount_value = Decimal('0')
             
         # Create Product
         with transaction.atomic():
@@ -332,7 +377,7 @@ def process_row(row, categories, subcategories, user):
                 markup_in_prices=num_val(row.get('markup_in_prices')),
                 final_listing_price_on_motospar=num_val(row.get('final_listing_price_on_motospar')),
                 final_profit_per_part=num_val(row.get('final_profit_per_part')),
-                discount=num_val(row.get('discount')),  # will be 0 if blank
+                discount=discount_value,
                 in_stock=True if csv_text(row.get('in_stock')).lower() in ["yes", "true", "1"] else False,
                 sold_quantity=num_val(row.get('sold_quantity'), is_decimal=False),
                 sku=sku,
@@ -463,6 +508,7 @@ def bulk_product_upload_preview(request):
     try:
         df = read_bulk_upload_dataframe(request.FILES["file"])
         taxonomy = inspect_bulk_upload_taxonomy(df)
+        taxonomy["validation_errors"] = inspect_bulk_upload_rows(df)
         return JsonResponse({"data": taxonomy, "status": True})
     except Exception as exc:
         return JsonResponse({"message": str(exc), "status": False}, status=400)

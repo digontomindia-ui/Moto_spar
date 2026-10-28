@@ -1271,18 +1271,30 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 settoastMessage("File uploaded successfully");
                 toast.success(res?.message || "CSV upload completed successfully.");
             } else {
-                const resultMessage = res?.message || "CSV upload could not be completed.";
+                const successCount = Number(data.success_count || 0);
+                const errorCount = Number(data.error_count || errors.length || 0);
+                const resultMessage = errorCount > 0
+                    ? `Upload finished with issues: ${successCount} row(s) added, ${errorCount} row(s) need correction.`
+                    : res?.message || "CSV upload could not be completed.";
+                const friendlyErrors = errors.map((error) => (
+                    /numeric field overflow/i.test(error)
+                        ? `${error.split(":")[0]}: A number is outside the allowed range. Check that Discount is a percentage from 0 to 100 (for example, enter 5 for 5%), and review other numeric values against the template.`
+                        : error
+                ));
                 toast.error(
                     <div>
                         <strong>{resultMessage}</strong>
-                        {errors.length > 0 && (
+                        {successCount > 0 && (
+                            <div className="mt-1">Rows that succeeded are already saved. Retry only the failed rows to avoid duplicate SKUs.</div>
+                        )}
+                        {friendlyErrors.length > 0 && (
                             <ul className="mb-0 mt-2 ps-3">
-                                {errors.slice(0, 5).map((error, index) => (
+                                {friendlyErrors.slice(0, 5).map((error, index) => (
                                     <li key={`${index}-${error}`}>{error}</li>
                                 ))}
                             </ul>
                         )}
-                        {errors.length > 5 && <div className="mt-1">And {errors.length - 5} more row error(s).</div>}
+                        {friendlyErrors.length > 5 && <div className="mt-1">And {friendlyErrors.length - 5} more row error(s).</div>}
                     </div>,
                     { autoClose: 15000 }
                 );
