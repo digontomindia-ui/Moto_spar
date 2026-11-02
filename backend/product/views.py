@@ -61,6 +61,14 @@ from .utils import (
     notify_admin_about_product_request
     )
 from .authentication import ChatbotAPIKeyAuthentication
+from django.core.exceptions import ValidationError as DjangoValidationError
+from .validators import validate_uploaded_image_file
+from .image_upload import (
+    collect_uploaded_image_files,
+    validate_image_files,
+    save_image_records,
+    max_images_per_item,
+)
 
 
 # Create your views here.
@@ -696,33 +704,55 @@ def add_product(request):
                     if variant_serializer.is_valid():
                         variant_instance = variant_serializer.save(product=product_instance)
 
-                        # * To Upload Multiple Images associated with the variant
-                        # images = request.FILES.getlist('images')                    # ? request.data
-                        # request.data.getlist('images')
-                        images = request.data.get('images', [])  # Expect a list of image URLs
+                        # Support direct file upload (multipart) or legacy URL strings
+                        uploaded_files = request.FILES.getlist('images') or request.FILES.getlist('files')
+                        legacy_images = request.data.get('images', []) if hasattr(request.data, 'get') else []
                         image_error_messages = []
-                        for image in images:
-                            image_data = {
-                                'variant': variant_instance.id,
-                                'image': image,    
-                            }
-                            image_serializer = ProductImageSerializer(data=image_data)
-                            if image_serializer.is_valid():
-                                image_serializer.save(is_active=True)
+
+                        if uploaded_files:
+                            max_images = getattr(settings, 'MAX_PRODUCT_IMAGES_PER_VARIANT', 10)
+                            if len(uploaded_files) > max_images:
+                                image_error_messages.append(f"Maximum {max_images} images allowed per variant.")
                             else:
-                                # Log the error but continue processing remaining files
-                                for field, messages in image_serializer.errors.items():
-                                    image_error_messages.append(f'{field}: {", ".join(messages)}')
+                                for file in uploaded_files:
+                                    try:
+                                        validate_uploaded_image_file(file)
+                                        ProductImage.objects.create(
+                                            variant=variant_instance,
+                                            image_file=file,
+                                            image=getattr(file, 'name', ''),
+                                            is_active=True
+                                        )
+                                    except DjangoValidationError as ve:
+                                        image_error_messages.append(str(ve.message if hasattr(ve, 'message') else ve))
+                                    except Exception as ex:
+                                        image_error_messages.append(str(ex))
+                        elif legacy_images:
+                            for image in legacy_images:
+                                image_data = {
+                                    'variant': variant_instance.id,
+                                    'image': image,
+                                }
+                                image_serializer = ProductImageSerializer(data=image_data, context={'request': request})
+                                if image_serializer.is_valid():
+                                    image_serializer.save(is_active=True)
+                                else:
+                                    for field, messages in image_serializer.errors.items():
+                                        image_error_messages.append(f'{field}: {", ".join(messages)}')
+
+                        # Re-fetch product data with variants and resolved images
+                        serialized_product = ProductSerializer(product_instance, context={'request': request}).data
 
                         # If there were errors, include them in the response but do not fail the entire request
                         if image_error_messages:
                             response_data = {
                                 'data': {
                                     'details': image_error_messages, 
-                                    'product': product_serializer.data, 
+                                    'product': serialized_product,
+                                    'variant_id': str(variant_instance.id),
                                     'status': 'error', 
                                     'code': status.HTTP_400_BAD_REQUEST
-                                    },
+                                },
                                 'message': 'Product added but some invalid image data found',
                                 'status': False
                             }
@@ -730,7 +760,8 @@ def add_product(request):
                         else:
                             response_data = {
                                 'data': {
-                                    'product': product_serializer.data, 
+                                    'product': serialized_product,
+                                    'variant_id': str(variant_instance.id),
                                     'status': 'success', 
                                     'code': status.HTTP_201_CREATED
                                 },
@@ -864,28 +895,52 @@ def add_variant_and_images(request, product_id):
                 if variant_serializer.is_valid():
                     variant_instance = variant_serializer.save(product=product_instance)
 
-                    # Handle the images for the variant
-                    # images = request.FILES.getlist('images')
-                    images = request.data.get('images', [])  # Expect a list of image URLs                    
+                    # Handle direct file uploads (multipart) or legacy URLs
+                    uploaded_files = request.FILES.getlist('images') or request.FILES.getlist('files')
+                    legacy_images = request.data.get('images', []) if hasattr(request.data, 'get') else []
                     error_messages = []
-                    for image in images:
-                        image_data = {
-                            'variant': variant_instance.id,
-                            'image': image
-                        }
-                        image_serializer = ProductImageSerializer(data=image_data)
-                        if image_serializer.is_valid():
-                            image_serializer.save(is_active=True)
+
+                    if uploaded_files:
+                        max_images = getattr(settings, 'MAX_PRODUCT_IMAGES_PER_VARIANT', 10)
+                        if len(uploaded_files) > max_images:
+                            error_messages.append(f"Maximum {max_images} images allowed per variant.")
                         else:
-                            # Log the error but continue processing remaining files
-                            for field, messages in image_serializer.errors.items():
-                                error_messages.append(f'{field}: {", ".join(messages)}')
+                            for file in uploaded_files:
+                                try:
+                                    validate_uploaded_image_file(file)
+                                    ProductImage.objects.create(
+                                        variant=variant_instance,
+                                        image_file=file,
+                                        image=getattr(file, 'name', ''),
+                                        is_active=True
+                                    )
+                                except DjangoValidationError as ve:
+                                    error_messages.append(str(ve.message if hasattr(ve, 'message') else ve))
+                                except Exception as ex:
+                                    error_messages.append(str(ex))
+                    elif legacy_images:
+                        for image in legacy_images:
+                            image_data = {
+                                'variant': variant_instance.id,
+                                'image': image
+                            }
+                            image_serializer = ProductImageSerializer(data=image_data, context={'request': request})
+                            if image_serializer.is_valid():
+                                image_serializer.save(is_active=True)
+                            else:
+                                for field, messages in image_serializer.errors.items():
+                                    error_messages.append(f'{field}: {", ".join(messages)}')
+
+                    # Re-serialize variant with context for resolved image URLs
+                    serialized_variant = ProductVariantSerializer(variant_instance, context={'request': request}).data
 
                     # If there were errors, include them in the response but do not fail the entire request
                     if error_messages:
                         response_data = {
                             'data': {
                                 'details': error_messages,
+                                'variant': serialized_variant,
+                                'variant_id': str(variant_instance.id),
                                 'status': 'error',
                                 'code': status.HTTP_400_BAD_REQUEST
                             },
@@ -896,7 +951,8 @@ def add_variant_and_images(request, product_id):
                     else:
                         response_data = {
                             'data': {
-                                'variant': variant_serializer.data,
+                                'variant': serialized_variant,
+                                'variant_id': str(variant_instance.id),
                                 'status': 'success',
                                 'code': status.HTTP_201_CREATED
                             },
@@ -937,6 +993,125 @@ def add_variant_and_images(request, product_id):
             'data': {
                 'details': str(e),
                 "status": "error",
+                'code': status.HTTP_500_INTERNAL_SERVER_ERROR
+            },
+            'message': INTERNAL_SERVER_ERROR_MESSAGE,
+            'status': False
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ? Dedicated authenticated endpoint for uploading images to a product variant
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def upload_variant_images(request, variant_id):
+    """
+    Dedicated authenticated endpoint for uploading image files to a product variant.
+    Stores files in configured S3 bucket (or local filesystem fallback).
+    Validates file format, size, actual content (Pillow), and variant image count limits.
+    """
+    try:
+        variant = ProductVariant.objects.filter(id=variant_id, is_active=True).first()
+        if not variant:
+            return JsonResponse({
+                'data': {'status': 'error', 'code': status.HTTP_404_NOT_FOUND},
+                'message': 'Product variant not found.',
+                'status': False
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Collect uploaded files from multipart request
+        files = request.FILES.getlist('images')
+        if not files:
+            files = request.FILES.getlist('files')
+        if not files:
+            files = request.FILES.getlist('image')
+        if not files and 'image' in request.FILES:
+            files = [request.FILES['image']]
+
+        if not files:
+            return JsonResponse({
+                'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                'message': 'No image files provided in the request.',
+                'status': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate count limit
+        max_images = getattr(settings, 'MAX_PRODUCT_IMAGES_PER_VARIANT', 10)
+        current_count = variant.images.filter(is_active=True).count()
+        if current_count + len(files) > max_images:
+            return JsonResponse({
+                'data': {
+                    'status': 'error',
+                    'code': status.HTTP_400_BAD_REQUEST,
+                    'details': [f"Variant already has {current_count} active image(s). Adding {len(files)} would exceed limit of {max_images}."],
+                },
+                'message': f"Maximum {max_images} images allowed per variant.",
+                'status': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate each file
+        validation_errors = []
+        for file in files:
+            try:
+                validate_uploaded_image_file(file)
+            except DjangoValidationError as ve:
+                validation_errors.append(str(ve.message if hasattr(ve, 'message') else ve))
+            except Exception as ex:
+                validation_errors.append(str(ex))
+
+        if validation_errors:
+            return JsonResponse({
+                'data': {
+                    'status': 'error',
+                    'code': status.HTTP_400_BAD_REQUEST,
+                    'details': validation_errors,
+                },
+                'message': 'Image validation failed.',
+                'status': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        created_images = []
+        try:
+            with transaction.atomic():
+                for file in files:
+                    img_obj = ProductImage(
+                        variant=variant,
+                        image_file=file,
+                        image=getattr(file, 'name', ''),
+                        is_active=True,
+                    )
+                    try:
+                        img_obj.save()
+                    except Exception:
+                        # FileField may have written to S3 before the DB insert failed.
+                        if img_obj.image_file and img_obj.image_file.name:
+                            img_obj.image_file.storage.delete(img_obj.image_file.name)
+                        raise
+                    created_images.append(img_obj)
+        except Exception:
+            # A database rollback cannot undo files already persisted to object storage.
+            for img_obj in created_images:
+                if img_obj.image_file and img_obj.image_file.name:
+                    img_obj.image_file.storage.delete(img_obj.image_file.name)
+            raise
+
+        serializer = ProductImageSerializer(created_images, many=True, context={'request': request})
+        return JsonResponse({
+            'data': {
+                'images': serializer.data,
+                'count': len(created_images),
+                'variant_id': str(variant.id),
+                'status': 'success',
+                'code': status.HTTP_201_CREATED,
+            },
+            'message': f"Successfully uploaded {len(created_images)} image(s).",
+            'status': True
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return JsonResponse({
+            'data': {
+                'details': 'Unable to store the uploaded images. Please retry the upload.',
+                'status': 'error',
                 'code': status.HTTP_500_INTERNAL_SERVER_ERROR
             },
             'message': INTERNAL_SERVER_ERROR_MESSAGE,
@@ -1038,58 +1213,19 @@ def edit_variant_and_images(request, variant_id):
                     #         for field, messages in image_serializer.errors.items():
                     #             error_messages.append(f'{field}: {", ".join(messages)}')
                     
-                    # Normalize incoming images to a list
-                    new_images = request.data.get('images', []) or []
-                    if isinstance(new_images, str):
-                        new_images = [new_images]
-
-                    # Current images for the variant (only active ones)
-                    existing_images_qs = ProductImage.objects.filter(variant=product_variant, is_active=True)
-                    existing_images = list(existing_images_qs.values_list('image', flat=True))
-
-                    # Compute what to add (preserve order from request) and what to delete
-                    images_to_add = [img for img in new_images if img not in existing_images]
-                    images_to_delete = [img for img in existing_images if img not in new_images]
-
-                    # Add new images
-                    error_messages = []
-                    # Add new images
-                    for image in images_to_add:
-                        image_data = {'variant': product_variant.id, 'image': image}
-                        image_serializer = ProductImageSerializer(data=image_data)
-                        if image_serializer.is_valid():
-                            image_serializer.save(is_active=True)
-                        else:
-                            for field, messages in image_serializer.errors.items():
-                                error_messages.append(f'{field}: {", ".join(messages)}')
-
-                    # Hard-delete images that were removed in the request
-                    if images_to_delete:
-                        ProductImage.objects.filter(variant=product_variant, image__in=images_to_delete).delete()
-                            
-                    # If there were errors, include them in the response but do not fail the entire request
-                    if error_messages:
-                        response_data = {
-                            'data': {
-                                'details': error_messages,
-                                'status': 'error',
-                                'code': status.HTTP_400_BAD_REQUEST
-                            },
-                            'message': 'Variant updated but some invalid image data found',
-                            'status': False
-                        }
-                        return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
-                    else:
-                        response_data = {
+                    # Image lifecycle is handled only by the dedicated upload and
+                    # delete endpoints. In particular, do not replace storage keys
+                    # with resolved display URLs supplied by older clients.
+                    response_data = {
                             'data': {
                                 'variant': variant_serializer.data,
                                 'status': 'success',
-                                'code': status.HTTP_201_CREATED
+                                'code': status.HTTP_200_OK
                             },
-                            'message': 'Variant and images updated successfully',
+                            'message': 'Variant updated successfully',
                             'status': True
-                        }
-                        return JsonResponse(response_data, status=status.HTTP_201_CREATED)
+                    }
+                    return JsonResponse(response_data, status=status.HTTP_200_OK)
             else:
                 # Handling validation errors for the variant
                 variant_error_messages = []
@@ -2135,43 +2271,45 @@ def add_product_request(request):
                 # Validate and save ProductRequest
                 product_serializer = ProductRequestSerializer(data=request_data, context={'request': request})
                 if product_serializer.is_valid():
-                    # Save product request instance
+                    files = collect_uploaded_image_files(request)
+                    if files:
+                        validation_errors = validate_image_files(files)
+                        if validation_errors:
+                            return JsonResponse({
+                                'data': {
+                                    'status': 'error',
+                                    'code': status.HTTP_400_BAD_REQUEST,
+                                    'details': validation_errors,
+                                },
+                                'message': 'Image validation failed.',
+                                'status': False
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        max_images = max_images_per_item()
+                        if len(files) > max_images:
+                            return JsonResponse({
+                                'data': {
+                                    'status': 'error',
+                                    'code': status.HTTP_400_BAD_REQUEST,
+                                    'details': [f"Adding {len(files)} image(s) would exceed limit of {max_images}."],
+                                },
+                                'message': f"Maximum {max_images} images allowed per product request.",
+                                'status': False
+                            }, status=status.HTTP_400_BAD_REQUEST)
+
                     product_instance = product_serializer.save()
-                    
-                    # Notify admin about the new product request
+                    if files:
+                        def _build_request_image(uploaded_file, product_instance=product_instance):
+                            return ProductRequestImage(
+                                productrequest=product_instance,
+                                image=uploaded_file,
+                                is_active=True,
+                            )
+                        save_image_records(files, _build_request_image)
+
                     notify_admin_about_product_request(request.user, product_instance)
-
-                    # Handle multiple images for the product request
-                    images = request.FILES.getlist('images')
-                    image_error_messages = []
-
-                    if images:
-                        for image in images:
-                            image_data = {
-                                'productrequest': product_instance.id,
-                                'image': image
-                            }
-                            image_serializer = ProductRequestImageSerializer(data=image_data)
-                            if image_serializer.is_valid():
-                                image_serializer.save(is_active=True)
-                            else:
-                                # Log the error but continue processing remaining files
-                                for field, messages in image_serializer.errors.items():
-                                    image_error_messages.append(f'{field}: {", ".join(messages)}')
-
-                    # If there were errors with some images, include that in the response
-                    if image_error_messages:
-                        response_data = {
-                            'data': {
-                                'details': image_error_messages,
-                                'product': product_serializer.data,
-                                'status': 'partial_success',
-                                'code': status.HTTP_206_PARTIAL_CONTENT
-                            },
-                            'message': 'Product request created, but some images had errors.',
-                            'status': True
-                        }
-                        return JsonResponse(response_data, status=status.HTTP_206_PARTIAL_CONTENT)
+                    product_serializer = ProductRequestSerializer(
+                        product_instance, context={'request': request}
+                    )
 
                     # If no image errors, return success response
                     response_data = {
@@ -2214,11 +2352,11 @@ def add_product_request(request):
             }
             return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
 
-    except Exception as e:
-        # Handle any uncaught exceptions
+    except Exception:
+        # Handle any uncaught exceptions without leaking storage internals
         response_data = {
             'data': {
-                'details': str(e),
+                'details': 'Unable to store the uploaded images. Please retry the upload.',
                 "status": "error",
                 'code': status.HTTP_500_INTERNAL_SERVER_ERROR
             },
@@ -2400,7 +2538,7 @@ def view_specific_product_request(request, product_request_id):
         user = request.user
         if user.account_type == 'admin' or (user.account_type == 'vendor' and product_request.vendor == user):
             # Serialize the product request data
-            serializer = ProductRequestSerializer(product_request)
+            serializer = ProductRequestSerializer(product_request, context={'request': request})
             return JsonResponse({
                 'data': {
                     'product_request': serializer.data,
@@ -2457,7 +2595,9 @@ def update_specific_product_request(request, product_request_id):
         user = request.user
         if user.account_type == 'admin' or (user.account_type == 'vendor' and product_request.vendor == user):
             # Update the ProductRequest with the provided data
-            serializer = ProductRequestSerializer(product_request, data=request.data, partial=True)
+            serializer = ProductRequestSerializer(
+                product_request, data=request.data, partial=True, context={'request': request}
+            )
             if serializer.is_valid():
                 serializer.save()  # Save the changes to the database
                 return JsonResponse({
@@ -2501,4 +2641,197 @@ def update_specific_product_request(request, product_request_id):
             'message': 'Internal Server Error',
             'status': False
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _vendor_owned_product_request(request, product_request_id, for_update=False):
+    requests = ProductRequest.objects.filter(id=product_request_id, is_active=True)
+    if for_update:
+        # Lock the parent row so concurrent image batches for this same request
+        # serialize their count-check-and-save operation on databases that
+        # support SELECT ... FOR UPDATE (e.g. PostgreSQL).
+        requests = requests.select_for_update()
+    product_request = requests.first()
+    if not product_request:
+        return None, JsonResponse({
+            'data': {
+                'details': 'Product request not found.',
+                'status': 'error',
+                'code': status.HTTP_404_NOT_FOUND
+            },
+            'message': 'Not Found',
+            'status': False
+        }, status=status.HTTP_404_NOT_FOUND)
+    if product_request.vendor_id != request.user.id:
+        return None, JsonResponse({
+            'data': {
+                'details': 'You do not have permission to access this product request.',
+                'status': 'error',
+                'code': status.HTTP_403_FORBIDDEN
+            },
+            'message': 'Forbidden',
+            'status': False
+        }, status=status.HTTP_403_FORBIDDEN)
+    return product_request, None
+
+
+def _vendor_image_error_response(status_code, message, details=None):
+    payload = {
+        'status': 'error',
+        'code': status_code,
+    }
+    if details is not None:
+        payload['details'] = details
+    return JsonResponse({
+        'data': payload,
+        'message': message,
+        'status': False
+    }, status=status_code)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsVendor])
+def upload_product_request_images(request, product_request_id):
+    """
+    Authenticated vendor upload for images on a vendor-owned ProductRequest.
+    Reuses product-image S3 storage (with local fallback) and image validation.
+    """
+    try:
+        # Check owner before doing potentially expensive image decoding. The
+        # owner is checked again after acquiring the row lock below.
+        product_request, error_response = _vendor_owned_product_request(
+            request, product_request_id
+        )
+        if error_response:
+            return error_response
+
+        files = collect_uploaded_image_files(request)
+        if not files:
+            return _vendor_image_error_response(
+                status.HTTP_400_BAD_REQUEST,
+                'No image files provided in the request.',
+            )
+
+        validation_errors = validate_image_files(files)
+        if validation_errors:
+            return _vendor_image_error_response(
+                status.HTTP_400_BAD_REQUEST,
+                'Image validation failed.',
+                validation_errors,
+            )
+
+        # Keep the request-row lock until after the active-image count check
+        # and save complete. A second upload to this request must wait, then
+        # re-count the committed images before accepting its batch.
+        with transaction.atomic():
+            product_request, error_response = _vendor_owned_product_request(
+                request,
+                product_request_id,
+                for_update=True,
+            )
+            if error_response:
+                return error_response
+
+            max_images = max_images_per_item()
+            current_count = product_request.images.filter(is_active=True).count()
+            if current_count + len(files) > max_images:
+                return _vendor_image_error_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Maximum {max_images} images allowed per product request.",
+                    [f"Product request already has {current_count} active image(s). Adding {len(files)} would exceed limit of {max_images}."],
+                )
+
+            def _build_request_image(uploaded_file):
+                return ProductRequestImage(
+                    productrequest=product_request,
+                    image=uploaded_file,
+                    is_active=True,
+                )
+
+            created_images = save_image_records(files, _build_request_image)
+        serializer = ProductRequestImageSerializer(
+            created_images, many=True, context={'request': request}
+        )
+        return JsonResponse({
+            'data': {
+                'images': serializer.data,
+                'count': len(created_images),
+                'product_request_id': str(product_request.id),
+                'status': 'success',
+                'code': status.HTTP_201_CREATED,
+            },
+            'message': f"Successfully uploaded {len(created_images)} image(s).",
+            'status': True
+        }, status=status.HTTP_201_CREATED)
+    except Exception:
+        return _vendor_image_error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            INTERNAL_SERVER_ERROR_MESSAGE,
+            'Unable to store the uploaded images. Please retry the upload.',
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsVendor])
+def list_product_request_images(request, product_request_id):
+    try:
+        product_request, error_response = _vendor_owned_product_request(request, product_request_id)
+        if error_response:
+            return error_response
+
+        images = product_request.images.filter(is_active=True).order_by('created_at')
+        serializer = ProductRequestImageSerializer(images, many=True, context={'request': request})
+        return JsonResponse({
+            'data': {
+                'images': serializer.data,
+                'count': len(serializer.data),
+                'product_request_id': str(product_request.id),
+                'status': 'success',
+                'code': status.HTTP_200_OK,
+            },
+            'message': 'Retrieved product request images successfully.',
+            'status': True
+        }, status=status.HTTP_200_OK)
+    except Exception:
+        return _vendor_image_error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            INTERNAL_SERVER_ERROR_MESSAGE,
+            'Unable to list product request images.',
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsVendor])
+def delete_product_request_image(request, product_request_image_id):
+    try:
+        product_image = ProductRequestImage.objects.filter(
+            id=product_request_image_id, is_active=True
+        ).select_related('productrequest').first()
+        if not product_image:
+            return _vendor_image_error_response(
+                status.HTTP_404_NOT_FOUND,
+                'Not Found',
+                'Product request image not found.',
+            )
+        if product_image.productrequest.vendor_id != request.user.id:
+            return _vendor_image_error_response(
+                status.HTTP_403_FORBIDDEN,
+                'Forbidden',
+                'You do not have permission to delete this image.',
+            )
+
+        product_image.delete()
+        return JsonResponse({
+            'data': {
+                'status': 'success',
+                'code': status.HTTP_200_OK
+            },
+            'message': 'Product request image deleted successfully',
+            'status': True
+        }, status=status.HTTP_200_OK)
+    except Exception:
+        return _vendor_image_error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            INTERNAL_SERVER_ERROR_MESSAGE,
+            'Unable to delete the image.',
+        )
 # ***** =====  END  ===== ******

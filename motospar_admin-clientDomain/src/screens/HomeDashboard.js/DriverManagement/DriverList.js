@@ -1,253 +1,205 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Badge, Button, Card, Form, Offcanvas, Spinner, Table } from "react-bootstrap";
+import { FaArrowLeft, FaArrowRight, FaEye, FaPlus, FaSearch, FaTruck } from "react-icons/fa";
+import { FiEdit2, FiTrash2 } from "react-icons/fi";
+import { useLocation, useNavigate } from "react-router-dom";
+import DeleteConfirmationModal from "../../../components/Atoms/DeleteModal";
 import Sidebar from "../../../components/Atoms/Sidebar";
 import Header from "../../../components/HOC/Header";
-import { Table, Button, Badge, Card, Offcanvas } from "react-bootstrap";
-import { AiOutlineSearch, AiFillEdit, AiFillDelete } from "react-icons/ai";
-import { FaEye, FaArrowLeft, FaArrowRight } from "react-icons/fa";
-import { useLocation, useNavigate } from "react-router-dom";
 import { VendorContext } from "../../../context/VendorContext";
-import DeleteConfirmationModal from "../../../components/Atoms/DeleteModal";
-import ToastComponent from "../../../components/HOC/Toast";
-import "../../../assets/Css/ProductList.css"; // Ensure your custom CSS is included
+import "../../../assets/Css/PeopleManagement.css";
+
+const getDriverName = (driver) =>
+    [driver?.first_name, driver?.last_name].filter(Boolean).join(" ") || "Unnamed driver";
 
 const Driverlist = () => {
-    const location = useLocation();
-    const Assign = location?.state?.Assign;
-    const orderId = location?.state?.orderId;
-    const [searchTerm, setSearchTerm] = useState("");
-    const [ShowToast, setShowToast] = useState(false);
-    const [showSidebar, setShowSidebar] = useState(false);
-
-    const toggleSidebar = () => setShowSidebar(!showSidebar);
-    const handleSearch = (event) => setSearchTerm(event.target.value);
-
     const {
         AllDrivers,
         assignDriver,
-        drivers,
-        toastMessage,
-        setCurrentPage,
         currentPage,
-        hasNext,
-        pageCount,
         deleteDriver,
+        drivers,
+        hasNext,
+        loadingactivity,
+        pageCount,
+        setCurrentPage,
+        totalCount,
     } = useContext(VendorContext);
+    const location = useLocation();
+    const navigate = useNavigate();
+    const assignmentMode = Boolean(location.state?.Assign);
+    const orderId = location.state?.orderId;
+    const requestRef = useRef(AllDrivers);
+    requestRef.current = AllDrivers;
 
-    const filterDriver = drivers?.filter(
-        (driver) =>
-            driver?.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            driver?.postal_code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [selectedDriver, setSelectedDriver] = useState(null);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const [pageError, setPageError] = useState("");
 
     useEffect(() => {
-        AllDrivers(currentPage);
-    }, [currentPage]);
+        const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 350);
+        return () => window.clearTimeout(timer);
+    }, [searchTerm]);
 
-    const handleNextPage = () => {
-        if (hasNext) {
-            setCurrentPage((prevPage) => prevPage + 1);
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearch, setCurrentPage]);
+
+    useEffect(() => {
+        let active = true;
+        const loadDrivers = async () => {
+            const result = await requestRef.current(currentPage || 1, { search: debouncedSearch });
+            if (active) setPageError(result?.success ? "" : result?.message || "Drivers could not be loaded.");
+        };
+        loadDrivers();
+        return () => {
+            active = false;
+        };
+    }, [currentPage, debouncedSearch]);
+
+    const visibleDrivers = useMemo(
+        () => (assignmentMode ? (drivers || []).filter((driver) => driver?.is_available) : drivers || []),
+        [assignmentMode, drivers]
+    );
+
+    const confirmAssignment = async () => {
+        if (!selectedDriver || loadingactivity) return;
+        const result = await assignDriver(orderId, selectedDriver.id);
+        if (result?.success) navigate(-1);
+        else {
+            setPageError(result?.message || "The driver could not be assigned.");
+            setSelectedDriver(null);
         }
-    };
-
-    const handlePreviousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage((prevPage) => prevPage - 1);
-        }
-    };
-
-    const handleAssignDriver = (driverId) => {
-        assignDriver(orderId, driverId);
-        setShowToast(true);
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000);
-    };
-
-    const navigate = useNavigate();
-    const [showModal, setShowModal] = useState(false);
-    const [deleteId, setDeleteId] = useState(null);
-
-    const handleDeleteClick = (id) => {
-        setDeleteId(id);
-        setShowModal(true);
     };
 
     const confirmDelete = async () => {
-        if (deleteId) {
-            await deleteDriver(deleteId);
-            AllDrivers(currentPage); // Refresh table after deletion
-            setShowModal(false);
+        if (!deleteTarget || loadingactivity) return;
+        const result = await deleteDriver(deleteTarget.id);
+        if (result?.success) {
+            setDeleteTarget(null);
+            const nextPage = visibleDrivers.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+            if (nextPage !== currentPage) setCurrentPage(nextPage);
+            else await requestRef.current(currentPage, { search: debouncedSearch });
+        } else {
+            setPageError(result?.message || "The driver could not be deleted.");
+            setDeleteTarget(null);
         }
     };
 
-    return (
-        <div className="d-flex flex-column flex-md-row">
-            {/* Sidebar visible on large screens */}
-            <div className="d-none d-md-block">
-                <Sidebar />
+    if (assignmentMode && !orderId) {
+        return (
+            <div className="people-missing-state">
+                <FaTruck />
+                <h2>Order reference is missing</h2>
+                <p>Start driver assignment from the order details page.</p>
+                <Button className="savebtn" onClick={() => navigate("/orderList")}>Back to orders</Button>
             </div>
+        );
+    }
 
-            {/* Offcanvas Sidebar for small screens */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{ width: "100vh", backgroundColor: "#262D34", color: "white" }} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar />
-                </Offcanvas.Body>
+    return (
+        <div className="d-flex people-management-shell">
+            <div className="d-none d-md-block"><Sidebar /></div>
+            <Offcanvas show={showSidebar} onHide={() => setShowSidebar(false)} className="bg-dark text-white">
+                <Offcanvas.Header closeButton closeVariant="white"><Offcanvas.Title>Menu</Offcanvas.Title></Offcanvas.Header>
+                <Offcanvas.Body className="p-0"><Sidebar /></Offcanvas.Body>
             </Offcanvas>
 
-            <div style={{ flex: 1 }}>
-                <Header title={"Driver Management"} toggleSidebar={toggleSidebar} />
-                <div className="d-flex justify-content-between align-items-center m-4">
-                    <h4>All Drivers</h4>
-                    <div>
-                        <Button className="savebtn" onClick={() => navigate("/driverDetail")}>
-                            Add New Driver
-                        </Button>
-                    </div>
-                </div>
+            <main className="people-management-main">
+                <Header title={assignmentMode ? "Order Management" : "Driver Management"} toggleSidebar={() => setShowSidebar((visible) => !visible)} />
+                <div className="people-management-page">
+                    <section className="people-page-heading">
+                        <div>
+                            {assignmentMode ? <button type="button" className="people-back-link" onClick={() => navigate(-1)}><FaArrowLeft />Back to order</button> : <span className="people-eyebrow">Operations team</span>}
+                            <h2>{assignmentMode ? "Assign a driver" : "Drivers"}</h2>
+                            <p>{assignmentMode ? "Choose an available driver for this delivery. An OTP is generated after assignment." : "Manage availability, licences, delivery activity and driver records."}</p>
+                        </div>
+                        {!assignmentMode ? <Button className="savebtn" onClick={() => navigate("/driverDetail")}><FaPlus />Add driver</Button> : null}
+                    </section>
 
-                <Card className="shadow-sm rounded custom-card m-4">
-                    <div className="p-4">
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                            <div className="wrapper mb-2 mb-md-0 w-100 w-md-auto" style={{ maxWidth: "400px" }}>
-                                <AiOutlineSearch className="icon" />
-                                <input
-                                    className="input w-100"
-                                    type="text"
-                                    id="search"
-                                    placeholder="Search"
+                    {pageError ? <Alert variant="danger" dismissible onClose={() => setPageError("")}>{pageError}</Alert> : null}
+
+                    <Card className="people-list-card">
+                        <Card.Header className="people-list-toolbar">
+                            <div>
+                                <strong>{assignmentMode ? "Available drivers" : "Driver directory"}</strong>
+                                <span>{assignmentMode ? "Unavailable drivers are hidden from assignment" : `${totalCount || 0} active driver records`}</span>
+                            </div>
+                            <div className="people-search">
+                                <FaSearch />
+                                <Form.Control
+                                    type="search"
                                     value={searchTerm}
-                                    onChange={handleSearch}
+                                    onChange={(event) => setSearchTerm(event.target.value)}
+                                    placeholder="Search name, phone, licence or area"
+                                    aria-label="Search drivers"
                                 />
                             </div>
-
-                            <div className="d-flex justify-content-between align-items-center">
-                                <span className="m-1">
-                                    Page {currentPage} of {pageCount}
-                                </span>
-                                <FaArrowLeft
-                                    className="m-1"
-                                    onClick={handlePreviousPage}
-                                    style={{
-                                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                    }}
-                                />
-                                <FaArrowRight
-                                    className="m-1"
-                                    onClick={handleNextPage}
-                                    style={{ cursor: !hasNext ? "not-allowed" : "pointer", opacity: !hasNext ? 0.5 : 1 }}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="table-responsive">
-                            <Table bordered responsive="sm" className="align-middle">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>Email Id</th>
-                                        <th>Area Code</th>
-                                        <th>Phone Number</th>
-                                        <th>Availability</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filterDriver.map((driver, index) => (
-                                        <tr key={driver?.id}>
-                                            <td>{index + 1}</td>
-                                            <td>
-                                                {driver?.first_name} {driver?.last_name}
-                                            </td>
-                                            <td>{driver?.email}</td>
-                                            <td>{driver?.postal_code}</td>
-                                            <td>{driver?.phone_number}</td>
-                                            <td>
-                                                {driver?.is_available ? (
-                                                    <Badge pill bg="success">
-                                                        Available
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge pill bg="danger">
-                                                        Not Available
-                                                    </Badge>
-                                                )}
-                                            </td>
-                                            {Assign ? (
+                        </Card.Header>
+                        <Card.Body className="p-0">
+                            {loadingactivity && !(drivers || []).length ? (
+                                <div className="people-empty-state"><Spinner animation="border" /><strong>Loading drivers</strong></div>
+                            ) : visibleDrivers.length ? (
+                                <div className="table-responsive">
+                                    <Table hover className="people-list-table align-middle mb-0">
+                                        <thead><tr><th>Driver</th><th>Contact</th><th>Licence</th><th>Area</th><th>Activity</th><th>Availability</th><th className="text-end">Actions</th></tr></thead>
+                                        <tbody>{visibleDrivers.map((driver) => (
+                                            <tr key={driver.id}>
+                                                <td><strong>{getDriverName(driver)}</strong><span className="people-cell-note">{driver.employment_status || "Employment not set"}</span></td>
+                                                <td><strong>{driver.phone_number || "No phone"}</strong><span className="people-cell-note">{driver.email || "No email"}</span></td>
+                                                <td><strong>{driver.license_number || "Not recorded"}</strong><span className="people-cell-note">{driver.license_type || "Type not set"} · {driver.license_status || "Status not set"}</span></td>
+                                                <td><strong>{driver.postal_code || "No postal code"}</strong><span className="people-cell-note">{[driver.city, driver.state].filter(Boolean).join(", ") || "Location not set"}</span></td>
+                                                <td><strong>{Number(driver.total_deliveries || 0).toLocaleString("en-IN")} deliveries</strong><span className="people-cell-note">Rating {driver.rating || "—"}</span></td>
+                                                <td><Badge bg={driver.is_available ? "success" : "secondary"}>{driver.is_available ? "Available" : "Unavailable"}</Badge></td>
                                                 <td>
-                                                    <Button
-                                                        size="sm"
-                                                        className="savebtn"
-                                                        title="Assign"
-                                                        onClick={() => handleAssignDriver(driver?.id)}
-                                                    >
-                                                        Assign
-                                                    </Button>
+                                                    {assignmentMode ? (
+                                                        <div className="people-row-actions"><Button className="savebtn" size="sm" onClick={() => setSelectedDriver(driver)}>Assign driver</Button></div>
+                                                    ) : (
+                                                        <div className="people-row-actions">
+                                                            <Button variant="outline-secondary" size="sm" onClick={() => navigate("/driverDetail", { state: { Driver: driver, view: true } })}><FaEye />View</Button>
+                                                            <Button variant="outline-success" size="sm" onClick={() => navigate("/driverDetail", { state: { Driver: driver, isEdit: true } })}><FiEdit2 />Edit</Button>
+                                                            <Button variant="outline-danger" size="sm" onClick={() => setDeleteTarget(driver)}><FiTrash2 /><span className="visually-hidden">Delete {getDriverName(driver)}</span></Button>
+                                                        </div>
+                                                    )}
                                                 </td>
-                                            ) : (
-                                                <td className="d-flex">
-                                                    <Button
-                                                        variant="outline-primary"
-                                                        size="sm"
-                                                        className="me-2"
-                                                        title="View"
-                                                        onClick={() =>
-                                                            navigate("/driverDetail", {
-                                                                state: { Driver: driver, view: true },
-                                                            })
-                                                        }
-                                                    >
-                                                        <FaEye />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline-success"
-                                                        size="sm"
-                                                        className="me-2"
-                                                        title="Edit"
-                                                        onClick={() =>
-                                                            navigate("/driverDetail", {
-                                                                state: { Driver: driver, isEdit: true },
-                                                            })
-                                                        }
-                                                    >
-                                                        <AiFillEdit />
-                                                    </Button>
+                                            </tr>
+                                        ))}</tbody>
+                                    </Table>
+                                </div>
+                            ) : (
+                                <div className="people-empty-state"><FaTruck /><strong>{searchTerm ? "No matching drivers" : assignmentMode ? "No available drivers" : "No drivers found"}</strong><span>{searchTerm ? "Try a different name, phone, licence or area." : assignmentMode ? "Update driver availability before assigning this delivery." : "Add the first driver to begin managing deliveries."}</span></div>
+                            )}
+                        </Card.Body>
+                        <Card.Footer className="people-pagination">
+                            <span>Page {currentPage || 1} of {Math.max(pageCount || 1, 1)}</span>
+                            <Button variant="light" disabled={loadingactivity || currentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} aria-label="Previous page"><FaArrowLeft /></Button>
+                            <Button variant="light" disabled={loadingactivity || !hasNext} onClick={() => setCurrentPage((page) => page + 1)} aria-label="Next page"><FaArrowRight /></Button>
+                        </Card.Footer>
+                    </Card>
+                </div>
+            </main>
 
-                                                    <Button
-                                                        variant="outline-danger"
-                                                        size="sm"
-                                                        title="Delete"
-                                                        onClick={() => handleDeleteClick(driver?.id)}
-                                                    >
-                                                        <AiFillDelete />
-                                                    </Button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </Table>
-                        </div>
-                    </div>
-                </Card>
-
-                <DeleteConfirmationModal
-                    show={showModal}
-                    onDeleteConfirm={confirmDelete}
-                    onCancel={() => setShowModal(false)}
-                    message={"This Driver will be deleted immediately. You can’t undo this action."}
-                />
-
-
-            </div>
+            <DeleteConfirmationModal
+                show={Boolean(selectedDriver)}
+                onCancel={() => !loadingactivity && setSelectedDriver(null)}
+                onDeleteConfirm={confirmAssignment}
+                title="Assign this driver?"
+                message={`Assign ${getDriverName(selectedDriver)} to this order? The customer delivery OTP will be generated immediately.`}
+                confirmLabel={loadingactivity ? "Assigning…" : "Confirm assignment"}
+                confirmVariant="primary"
+                isLoading={loadingactivity}
+            />
+            <DeleteConfirmationModal
+                show={Boolean(deleteTarget)}
+                onCancel={() => !loadingactivity && setDeleteTarget(null)}
+                onDeleteConfirm={confirmDelete}
+                title="Delete this driver?"
+                message={`${getDriverName(deleteTarget)} will be removed from the active driver directory. This action cannot be undone.`}
+                isLoading={loadingactivity}
+            />
         </div>
     );
 };

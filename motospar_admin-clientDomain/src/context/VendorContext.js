@@ -11,6 +11,7 @@ import {
     postFormdatatAuth,
     postUser,
 } from "../repository/Repo";
+import { buildProductUpdatePayload } from "../utils/productPayload";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 const VendorContext = createContext();
@@ -147,16 +148,20 @@ const VendorProvider = ({ children }) => {
                 //     type: "SET_USER_DATA",
                 //     payload: res?.data?.products,
                 // });
-                setspecificProduct(res?.data);
+                const product = res?.data?.products || res?.data?.product || res?.data;
+                setspecificProduct(product);
 
                 setloadingactivity(false);
+                return { success: true, product };
             } else {
                 setloadingactivity(false);
                 toast.error(res?.message);
+                return { success: false, message: res?.message };
             }
         } catch (e) {
             setloadingactivity(false);
             console.log("errorr... in getSpecificProduct....VEndorcontext", e);
+            return { success: false, message: e?.message || "Unable to refresh product details" };
         }
     };
 
@@ -242,6 +247,47 @@ const VendorProvider = ({ children }) => {
     //     }
     // };
 
+    const uploadVariantImages = async (variantId, fileList) => {
+        if (!variantId || !fileList || fileList.length === 0) {
+            return { success: true, data: [] };
+        }
+        try {
+            const formData = new FormData();
+            fileList.forEach((file) => {
+                formData.append("images", file);
+            });
+
+            const res = await postFormdatatAuth(`admin/variant/${variantId}/upload-images`, formData);
+            if (res?.status === true && res?.data?.status === "success") {
+                return { success: true, data: res?.data?.images || [], message: res?.message };
+            } else {
+                const errDetails = Array.isArray(res?.data?.details) ? res.data.details.join(", ") : res?.data?.details;
+                const msg = errDetails || res?.message || "Failed to upload images";
+                return { success: false, message: msg };
+            }
+        } catch (err) {
+            console.error("Error in uploadVariantImages:", err);
+            return { success: false, message: err?.message || "Network error uploading images" };
+        }
+    };
+
+    const deleteProductImage = async (imageId) => {
+        try {
+            const res = await DeleteAuth(`admin/product-images/${imageId}/delete`);
+            if (res?.status === true && res?.data?.status === "success") {
+                toast.success("Image deleted successfully");
+                return { success: true };
+            } else {
+                toast.error(res?.message || "Failed to delete image");
+                return { success: false, message: res?.message };
+            }
+        } catch (err) {
+            console.error("Error in deleteProductImage:", err);
+            toast.error("Failed to delete image");
+            return { success: false, message: err?.message };
+        }
+    };
+
     const AddProduct = async (productDetails) => {
         const {
             name,
@@ -265,12 +311,23 @@ const VendorProvider = ({ children }) => {
             driver_fees,
             mechanic_fees,
             images,
-           gst_rate,
-           is_gst_applicable,
+            imageFiles,
+            gst_rate,
+            is_gst_applicable,
         } = productDetails;
 
+        setloadingactivity(true);
+
         try {
-            // Build the JSON body
+            // Separate File objects from URL strings
+            const allImages = images || [];
+            const fileList = [
+                ...(imageFiles || []),
+                ...allImages.filter((img) => img instanceof File),
+            ];
+            const urlList = allImages.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
+
+            // Build JSON body for stage 1
             const body = {
                 name,
                 category_id: categoryId,
@@ -297,26 +354,54 @@ const VendorProvider = ({ children }) => {
                     material,
                     features,
                 },
-                images: images || [], // array of URLs
+                images: urlList,
             };
-            console.log("body>>", body)
 
             const res = await postAuth("admin/products/add", body);
-
             console.log(">>res..AddProduct.", res);
 
-            if (res?.data) {
-                settoastMessage(res?.message);
-                setloadingactivity(false);
-                setimages([]);
-                toast.success(res?.message);
+            if (res?.status === true && res?.data?.status === "success") {
+                const createdVariantId = res?.data?.variant_id || res?.data?.product?.variants?.[0]?.id;
+
+                // Stage 2: Upload image files to created variant
+                if (fileList.length > 0 && createdVariantId) {
+                    const uploadRes = await uploadVariantImages(createdVariantId, fileList);
+                    setloadingactivity(false);
+                    if (uploadRes?.success) {
+                        settoastMessage("Product and images saved successfully");
+                        toast.success("Product and images saved successfully");
+                        setimages([]);
+                        return { success: true, product: res.data.product, variantId: createdVariantId };
+                    } else {
+                        const errMsg = `Product saved, but image upload failed: ${uploadRes?.message || 'Error uploading images'}`;
+                        settoastMessage(errMsg);
+                        toast.warn(errMsg);
+                        return {
+                            success: false,
+                            partialSuccess: true,
+                            product: res.data.product,
+                            variantId: createdVariantId,
+                            failedFiles: fileList,
+                            message: errMsg,
+                        };
+                    }
+                } else {
+                    settoastMessage(res?.message || "Product added successfully");
+                    setloadingactivity(false);
+                    setimages([]);
+                    toast.success(res?.message || "Product added successfully");
+                    return { success: true, product: res.data.product, variantId: createdVariantId };
+                }
             } else {
                 setloadingactivity(false);
-                toast.error(res?.message);
+                toast.error(res?.message || "Failed to add product");
+                return { success: false, message: res?.message };
             }
         } catch (e) {
             setloadingactivity(false);
-            console.log("errorr... in AddProduct....VendorContext", e);
+            console.error("error in AddProduct...VendorContext", e);
+            toast.error("An error occurred while adding product");
+            return { success: false, message: e?.message };
         }
     };
 
@@ -324,24 +409,27 @@ const VendorProvider = ({ children }) => {
         setloadingactivity(true);
 
         try {
-            const body = {
-                ...productDetails, // Spread productDetails to form the request body
-            };
-            console.log(">>body", body);
+            const body = buildProductUpdatePayload(productDetails);
 
             const res = await PatchAuth(`admin/products/${Id}/edit`, body);
-            console.log(">>res..EditProduct.", res);
 
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
+            if (res?.status === true && res?.data?.status === "success") {
+                const message = res?.message || "Product updated successfully";
+                settoastMessage(message);
+                toast.success(message);
+                return { success: true, product: res?.data?.product, message };
             } else {
-                settoastMessage(res?.message);
-                toast.error(res?.message);
+                const details = res?.data?.details;
+                const message = details || res?.message || "Unable to update product";
+                settoastMessage(message);
+                toast.error(message);
+                return { success: false, message, details };
             }
         } catch (e) {
-            toast.error(e);
+            const message = e?.message || "Unable to update product";
+            toast.error(message);
             console.error("Error in EditProduct:", e);
+            return { success: false, message };
         } finally {
             setloadingactivity(false);
         }
@@ -416,98 +504,128 @@ const VendorProvider = ({ children }) => {
             console.log("errorr... in EditProfile....VEndorcontext", e);
         }
     };
-    const AllVendors = async (page) => {
+    const AllVendors = async (page, filters = {}) => {
         setloadingactivity(true);
         try {
             const offset = (page - 1) * 10;
 
-            var body = {
+            const body = {
                 limit: 10,
                 offset: page ? offset : 0,
+                search: filters?.search?.trim() || "",
             };
 
             const res = await postAuth("admin/vendors/view", body);
-            console.log(">>res..vendor.", res);
 
-            if (res?.data) {
-                // dispatch({
-                //     type: "SET_USER_DATA",
-                //     payload: res?.data?.products,
-                // });
-                console.log(res?.data);
-                setvendors(res?.data?.vendor_profiles);
-                setTotalCount(res?.data?.total_count);
-                setPageCount(res?.data?.page_count);
-                setHasNext(res?.data?.has_next);
-                setCurrentPage(res?.data?.current_page);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                setvendors(res.data.vendor_profiles || []);
+                setTotalCount(res.data.total_count || 0);
+                setPageCount(res.data.page_count || 0);
+                setHasNext(Boolean(res.data.has_next));
+                setCurrentPage(res.data.current_page || 1);
+                return { success: true, data: res.data };
             }
+
+            const message = res?.message || "Vendors could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error loading vendors", e);
+            const message = e?.message || "Vendors could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in ALLVendor....VEndorcontext", e);
         }
     };
-    const AllMechanics = async (page) => {
+    const AllMechanics = async (page, filters = {}) => {
         setloadingactivity(true);
         try {
             const offset = (page - 1) * 10;
 
-            var body = {
+            const body = {
                 limit: 10,
                 offset: page ? offset : 0,
+                search: filters?.search?.trim() || "",
             };
 
             const res = await postAuth("admin/mechanic/users/view", body);
-            console.log(">>res..ALLMechanics.", res);
 
-            if (res?.status === true) {
-                setmechanics(res?.data?.users);
-                setTotalCount(res?.data?.total_count);
-                setPageCount(res?.data?.page_count);
-                setHasNext(res?.data?.has_next);
-                setCurrentPage(res?.data?.current_page);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                setmechanics(res.data.users || []);
+                setTotalCount(res.data.total_count || 0);
+                setPageCount(res.data.page_count || 0);
+                setHasNext(Boolean(res.data.has_next));
+                setCurrentPage(res.data.current_page || 1);
+                return { success: true, data: res.data };
             }
+
+            const message = res?.message || "Mechanics could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error loading mechanics", e);
+            const message = e?.message || "Mechanics could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in ALLMechanics....VEndorcontext", e);
         }
     };
-    const AllUsers = async (page) => {
+    const AllUsers = async (page, filters = {}) => {
         setloadingactivity(true);
         try {
             const offset = (page - 1) * 10;
 
-            var body = {
+            const body = {
                 limit: 10,
                 offset: page ? offset : 0,
                 account_type: "customer",
+                search: filters?.search?.trim() || "",
             };
 
             const res = await postAuth("admin/users/view", body);
-            console.log(">>res..users.", res);
 
-            if (res?.data) {
-                console.log(res?.data);
-                setusers(res?.data?.users);
-                setTotalCount(res?.data?.total_count);
-                setPageCount(res?.data?.page_count);
-                setHasNext(res?.data?.has_next);
-                setCurrentPage(res?.data?.current_page);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                setusers(res.data.users || []);
+                setTotalCount(res.data.total_count || 0);
+                setPageCount(res.data.page_count || 0);
+                setHasNext(Boolean(res.data.has_next));
+                setCurrentPage(res.data.current_page || 1);
+                return { success: true, data: res.data };
             }
+
+            const message = res?.message || "Customers could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error loading customers", e);
+            const message = e?.message || "Customers could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in ALLusers....VEndorcontext", e);
+        }
+    };
+    const getSpecificUser = async (id) => {
+        setloadingactivity(true);
+        try {
+            const res = await getAuth(`admin/users/${id}/details/`);
+            if (res?.status === true && res?.data?.user) {
+                setuserDetail(res.data.user);
+                return { success: true, data: res.data.user };
+            }
+
+            const message = res?.message || "Customer details could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } catch (e) {
+            console.error("Error loading customer details", e);
+            const message = e?.message || "Customer details could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
+            setloadingactivity(false);
         }
     };
     const VendorProducts = async (page, id) => {
@@ -580,80 +698,93 @@ const VendorProvider = ({ children }) => {
             console.log("errorr... in getSpecificMechanic....VEndorcontext", e);
         }
     };
-    const AllOrders = async (page) => {
+    const AllOrders = async (page, filters = {}) => {
         setloadingactivity(true);
         try {
             const offset = (page - 1) * 10;
 
-            var body = {
+            const body = {
                 limit: 10,
                 offset: page ? offset : 0,
+                customer_name: filters.customer_name || "",
+                order_code: filters.order_code || "",
+                payment_method: filters.payment_method || "",
+                payment_status: filters.payment_status || "",
+                phone_number: filters.phone_number || "",
+                address: filters.address || "",
             };
 
             const res = await postAuth("admin/orders/view", body);
-            console.log(">>res..AllOrders.", res);
-
-            if (res?.data) {
-
-                setorders(res?.data?.orders);
+            if (res?.status === true) {
+                setorders(res?.data?.orders || []);
                 setTotalCount(res?.data?.total_count);
                 setPageCount(res?.data?.page_count);
                 setHasNext(res?.data?.has_next);
                 setCurrentPage(res?.data?.current_page);
-                setloadingactivity(false);
+                return { success: true, data: res.data };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to load orders";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to load orders";
+            toast.error(message);
+            console.error("Error in AllOrders", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in ALLorders....VEndorcontext", e);
         }
     };
-    const updateProductStatus = async (Id, order_status,driver_for_me_url,vendor_payment_status, payment_status) => {
+    const updateProductStatus = async (Id, order_status, driver_for_me_url, vendor_payment_status, payment_status) => {
         setloadingactivity(true);
-console.log(">>details for updateProductStatus.", driver_for_me_url);
         try {
-            var body = {
+            const body = {
                 order_status,
                 payment_status,
-                vendor_payment_status: vendor_payment_status ? vendor_payment_status : "",
-                driver_for_me_url: driver_for_me_url ? driver_for_me_url : "",
+                vendor_payment_status,
+                driver_for_me_url: driver_for_me_url || "",
             };
-            console.log(">>body for updateProductStatus.", body);
-
             const res = await PatchAuth(`order-item/${Id}/update-status`, body);
 
-
-            if (res?.data) {
+            if (res?.status === true) {
                 settoastMessage(res?.message);
                 toast.success(res?.message);
-                setloadingactivity(false);
+                return { success: true, data: res?.data, message: res?.message };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to update order item";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to update order item";
+            toast.error(message);
+            console.error("Error in updateProductStatus", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in updateProductStatus....VEndorcontext", e);
         }
     };
     const getNearestVendor = async (id) => {
         setloadingactivity(true);
         try {
             const res = await getAuth(`admin/order-item/${id}/find-nearest-vendors/`);
-            console.log(">>res..getNearestVendor.", res);
-
-            if (res?.data) {
-                setNearestVendor(res?.data?.nearest_vendors);
-                setloadingactivity(false);
+            if (res?.status === true) {
+                const vendors = res?.data?.nearest_vendors || [];
+                setNearestVendor(vendors);
+                return { success: true, vendors };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to find nearby vendors";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to find nearby vendors";
+            toast.error(message);
+            console.error("Error in getNearestVendor", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in getNearestVendor....VEndorcontext", e);
         }
     };
     const assignVendor = async (order_item_id, vendor_id, vendor_selling_price) => {
@@ -665,38 +796,44 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 vendor_selling_price,
             };
             const res = await postAuth("admin/order-item/assign-vendor", body);
-
-
-            if (res?.data) {
+            if (res?.status === true) {
                 settoastMessage(res?.message);
                 toast.success(res?.message);
-                setloadingactivity(false);
+                return { success: true, data: res?.data, message: res?.message };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to assign vendor";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to assign vendor";
+            toast.error(message);
+            console.error("Error in assignVendor", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in assignVendor....VEndorcontext", e);
         }
     };
     const getNearestMechanic = async (id) => {
         setloadingactivity(true);
         try {
             const res = await getAuth(`admin/order-item/${id}/find-nearest-mechanics/`);
-            console.log(">>res..getNearestMechanic.", res);
-
-            if (res?.data) {
-
-                setNearestMechanic(res?.data?.nearest_mechanics);
-                setloadingactivity(false);
+            if (res?.status === true) {
+                const mechanics = res?.data?.nearest_mechanics || [];
+                setNearestMechanic(mechanics);
+                return { success: true, mechanics };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to find nearby mechanics";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to find nearby mechanics";
+            toast.error(message);
+            console.error("Error in getNearestMechanic", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in getNearestMechanic....VEndorcontext", e);
         }
     };
     const assignMechanic = async (order_item_id, mechanic_id, mechanic_fees, notes) => {
@@ -708,19 +845,22 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 notes
             };
             const res = await postAuth(`admin/order-item/${order_item_id}/assign-mechanic`, body);
-            console.log(">>res..assignMechanic.", res);
-
-            if (res?.data) {
+            if (res?.status === true) {
                 settoastMessage(res?.message);
                 toast.success(res?.message);
-                setloadingactivity(false);
+                return { success: true, data: res?.data, message: res?.message };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to assign mechanic";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to assign mechanic";
+            toast.error(message);
+            console.error("Error in assignMechanic", e);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in assignMechanic....VEndorcontext", e);
         }
     };
     const requestProductList = async (page) => {
@@ -777,29 +917,29 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
     const addSubCategory = async (category_id, name, description, image) => {
         setloadingactivity(true);
         try {
-            const formData = new FormData();
+            const res = await postAuth("admin/sub-categories/add", {
+                category_id,
+                name,
+                description,
+                image: image || null,
+            });
 
-            // Add product details
-            formData.append("category_id", category_id);
-            formData.append("name", name);
-            formData.append("description", description);
-            formData.append("image", image);
-            const res = await postFormdatatAuth("admin/sub-categories/add", formData);
-
-
-            if (res?.data) {
+            if (res?.status === true) {
                 settoastMessage(res?.message);
                 toast.success(res?.message);
-                setloadingactivity(false);
-                return res
+                return res;
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
-                return res
+                const message = res?.data?.details || res?.message || "Unable to create sub-category";
+                toast.error(message);
+                return { ...res, status: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to create sub-category";
+            toast.error(message);
+            console.error("Error in addSubCategory", e);
+            return { status: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in addSubCategory....VEndorcontext", e);
         }
     };
     const getAllSubCategory = async (page) => {
@@ -834,46 +974,53 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
     const editSubCategory = async (data) => {
         setloadingactivity(true);
         try {
-
             const body = {
                 name: data.subCategoryName,
                 description: data.description,
-                image: data.image || null
-            }
+            };
+            if (data.categoryId) body.category_id = data.categoryId;
+            if (data.image !== undefined) body.image = data.image || null;
 
             const res = await PatchAuth(`admin/sub-categories/${data.subCategoryId}/edit`, body);
 
-            if (res?.data) {
+            if (res?.status === true) {
                 toast.success(res?.message);
-
-                setloadingactivity(false);
+                return res;
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to update sub-category";
+                toast.error(message);
+                return { ...res, status: false, message };
             }
         } catch (e) {
+            const message = e?.message || "Unable to update sub-category";
+            toast.error(message);
+            console.error("Error in editSubCategory", e);
+            return { status: false, message };
+        } finally {
             setloadingactivity(false);
-            toast.error(e);
-            console.log("errorr... in editSubCategory....VEndorcontext", e);
         }
     };
     const deleteCommon = async (uri) => {
         setloadingactivity(true);
         try {
             const res = await DeleteAuth(uri);
-            console.log(">>res", res);
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-                return res;
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                const message = res?.message || "The item was deleted successfully.";
+                settoastMessage(message);
+                toast.success(message);
+                return { ...res, success: true, message };
             }
+
+            const message = res?.message || "The item could not be deleted.";
+            toast.error(message);
+            return { ...res, success: false, message };
         } catch (e) {
+            console.error("Error deleting item", e);
+            const message = e?.message || "The item could not be deleted.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in deleteCommon....VEndorcontext", e);
         }
     };
     const getStatistics = async () => {
@@ -898,30 +1045,51 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
         setloadingactivity(true);
         try {
             const res = await getAuth(`admin/products/${id}/toggle-active/`);
-            console.log(">>res..toggleProductStatus.", res);
-
-            if (res?.data) {
-
-                setstatisticsData(res?.data);
+            if (res?.status === true || res?.data?.status === "success") {
+                if (res?.data?.products) {
+                    setspecificProduct(res.data.products);
+                }
                 setloadingactivity(false);
+                return { success: true, data: res?.data, message: res?.message };
             } else {
                 setloadingactivity(false);
-                toast.error(res?.message);
+                const message = res?.data?.details || res?.message || "Unable to change product status";
+                toast.error(message);
+                return { success: false, message };
             }
         } catch (e) {
             setloadingactivity(false);
+            const message = e?.message || "Unable to change product status";
             console.log("errorr... in toggleProductStatus....VEndorcontext", e);
+            toast.error(message);
+            return { success: false, message };
         }
     };
-    const AddVariant = async (Id, sku, price, discount, color, size, weight, dimensions, material, features, images) => {
+    const AddVariant = async (
+        Id,
+        sku,
+        price,
+        discount,
+        color,
+        size,
+        weight,
+        dimensions,
+        material,
+        features,
+        stockStatus,
+        images
+    ) => {
         setloadingactivity(true);
-        // console.log("details from addproduct>>", name, categoryId, description);
         try {
+            const allImages = images || [];
+            const fileList = allImages.filter((img) => img instanceof File);
+            const urlList = allImages.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
+
             const body = {
                 variant: {
-                    final_listing_price_on_motospar: Number(price),   // force number
+                    final_listing_price_on_motospar: Number(price),
                     discount: Number(discount),
-                    in_stock: false,
+                    in_stock: stockStatus === true || stockStatus === "true",
                     sku,
                     color,
                     size,
@@ -930,59 +1098,116 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                     material,
                     features,
                 },
-                images: images || [], // ✅ array of URLs (keep same as AddProduct)
+                images: urlList,
             };
 
             const res = await postAuth(`admin/variant/${Id}/add`, body);
 
-
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-                setimages([]);
+            if (res?.status === true && res?.data?.status === "success") {
+                const createdVariantId = res?.data?.variant_id || res?.data?.variant?.id;
+                if (fileList.length > 0 && createdVariantId) {
+                    const uploadRes = await uploadVariantImages(createdVariantId, fileList);
+                    setloadingactivity(false);
+                    if (uploadRes?.success) {
+                        settoastMessage("Variant and images added successfully");
+                        toast.success("Variant and images added successfully");
+                        setimages([]);
+                        return { success: true, variantId: createdVariantId };
+                    } else {
+                        const errMsg = `Variant was saved, but image upload failed: ${uploadRes?.message || 'Error uploading images'}`;
+                        settoastMessage(errMsg);
+                        toast.warn(errMsg);
+                        return {
+                            success: false,
+                            partialSuccess: true,
+                            variantId: createdVariantId,
+                            failedFiles: fileList,
+                            message: errMsg,
+                        };
+                    }
+                } else {
+                    settoastMessage(res?.message || "Variant added successfully");
+                    toast.success(res?.message || "Variant added successfully");
+                    setloadingactivity(false);
+                    setimages([]);
+                    return { success: true, variantId: createdVariantId };
+                }
             } else {
                 setloadingactivity(false);
-                toast.error(res?.message);
+                toast.error(res?.message || "Failed to add variant");
+                return { success: false, message: res?.message };
             }
         } catch (e) {
             setloadingactivity(false);
-            console.log("errorr... in AddVariant....VEndorcontext", e);
+            console.error("error in AddVariant...VendorContext", e);
+            toast.error("An error occurred while adding variant");
+            return { success: false, message: e?.message };
         }
     };
     const EditVariant = async (data) => {
         setloadingactivity(true);
 
         try {
+            // Existing images are stored by their storage key. Never send their
+            // resolved display URLs back as image values during a details edit.
+            const fileList = [
+                ...(data?.imageFiles || []),
+                ...(data?.images || []).filter((img) => img instanceof File),
+            ];
+
             const body = {
                 sku: data?.sku,
                 final_listing_price_on_motospar: Number(data?.price),
                 discount: Number(data?.discount),
-                in_stock: Boolean(data?.stock_status),
+                in_stock: data?.stock_status === true || data?.stock_status === "true",
                 color: data?.color,
                 size: data?.size,
                 weight: data?.weight,
                 dimensions: data?.dimensions,
                 material: data?.material,
                 features: data?.features,
-                images: data?.images || [],
             };
 
             const res = await PatchAuth(`admin/variant/${data.id}/edit`, body);
 
-
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-                setimages([]);
+            if (res?.status === true && res?.data?.status === "success") {
+                if (fileList.length > 0 && data?.id) {
+                    const uploadRes = await uploadVariantImages(data.id, fileList);
+                    setloadingactivity(false);
+                    if (uploadRes?.success) {
+                        settoastMessage("Variant and images updated successfully");
+                        toast.success("Variant and images updated successfully");
+                        setimages([]);
+                        return { success: true };
+                    } else {
+                        const errMsg = `Variant updated, but image upload failed: ${uploadRes?.message || 'Error uploading images'}`;
+                        settoastMessage(errMsg);
+                        toast.warn(errMsg);
+                        return {
+                            success: false,
+                            partialSuccess: true,
+                            variantId: data.id,
+                            failedFiles: fileList,
+                            message: errMsg,
+                        };
+                    }
+                } else {
+                    settoastMessage(res?.message || "Variant updated successfully");
+                    toast.success(res?.message || "Variant updated successfully");
+                    setloadingactivity(false);
+                    setimages([]);
+                    return { success: true };
+                }
             } else {
                 setloadingactivity(false);
-                toast.error(res?.message);
+                toast.error(res?.message || "Failed to update variant");
+                return { success: false, message: res?.message };
             }
         } catch (e) {
             setloadingactivity(false);
-            console.log("errorr... in EditVariant....VEndorcontext", e);
+            console.error("error in EditVariant...VendorContext", e);
+            toast.error("An error occurred while updating variant");
+            return { success: false, message: e?.message };
         }
     };
     const addDriver = async (
@@ -1048,57 +1273,66 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
             console.log("errorr... in addDriver....VEndorcontext", e);
         }
     };
-    const AllDrivers = async (page) => {
+    const AllDrivers = async (page, filters = {}) => {
         setloadingactivity(true);
         try {
             const offset = (page - 1) * 10;
 
-            var body = {
+            const body = {
                 limit: 10,
                 offset: page ? offset : 0,
+                search: filters?.search?.trim() || "",
             };
 
             const res = await postAuth("admin/driver/view", body);
-            console.log(">>res..drivers.", res);
 
-            if (res?.data) {
-                console.log(res?.data);
-                setdrivers(res?.data?.drivers);
-                setTotalCount(res?.data?.total_count);
-                setPageCount(res?.data?.page_count);
-                setHasNext(res?.data?.has_next);
-                setCurrentPage(res?.data?.current_page);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                setdrivers(res.data.drivers || []);
+                setTotalCount(res.data.total_count || 0);
+                setPageCount(res.data.page_count || 0);
+                setHasNext(Boolean(res.data.has_next));
+                setCurrentPage(res.data.current_page || 1);
+                return { success: true, data: res.data };
             }
+
+            const message = res?.message || "Drivers could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error loading drivers", e);
+            const message = e?.message || "Drivers could not be loaded.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in All Drivers....VEndorcontext", e);
         }
     };
     const assignDriver = async (order_id, driver_id) => {
         setloadingactivity(true);
         try {
-            var body = {
+            const body = {
                 order_id,
                 driver_id,
             };
             const res = await postAuth("admin/order/assign-driver", body);
-            console.log(">>res..assignDriver.", res);
 
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                const message = res?.message || "Driver assigned successfully.";
+                settoastMessage(message);
+                toast.success(message);
+                return { success: true, data: res.data, message };
             }
+
+            const message = res?.message || "The driver could not be assigned.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error assigning driver", e);
+            const message = e?.message || "The driver could not be assigned.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in assignDriver....VEndorcontext", e);
         }
     };
 
@@ -1151,57 +1385,71 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
         setloadingactivity(true);
         try {
             const res = await postAuth(`admin/driver/${driver_id}/delete`);
-            console.log(">>res..deleteDriver.", res);
 
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                const message = res?.message || "Driver deleted successfully.";
+                settoastMessage(message);
+                toast.success(message);
+                return { success: true, data: res.data, message };
             }
+
+            const message = res?.message || "The driver could not be deleted.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error deleting driver", e);
+            const message = e?.message || "The driver could not be deleted.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in deleteDriver....VEndorcontext", e);
         }
     };
     const vendorVerfication = async (id) => {
         setloadingactivity(true);
         try {
             const res = await postAuth(`admin/vendors/${id}/verify`);
-            console.log(">>res..vendorVerfication.", res);
 
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                const message = res?.message || "Vendor verified successfully.";
+                settoastMessage(message);
+                toast.success(message);
+                return { success: true, data: res.data, message };
             }
+
+            const message = res?.message || "The vendor could not be verified.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error verifying vendor", e);
+            const message = e?.message || "The vendor could not be verified.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in vendorVerfication....VEndorcontext", e);
         }
     };
     const MechanicVerfication = async (id) => {
         setloadingactivity(true);
         try {
             const res = await postAuth(`admin/mechanics/${id}/verify`);
-            console.log(">>res..MechanicVerfication.", res);
-
-            if (res?.data) {
-                settoastMessage(res?.message);
-                toast.success(res?.message);
-                setloadingactivity(false);
-            } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
+            if (res?.status === true && res?.data) {
+                const message = res?.message || "Mechanic verified successfully.";
+                settoastMessage(message);
+                toast.success(message);
+                return { success: true, data: res.data, message };
             }
+
+            const message = res?.message || "The mechanic could not be verified.";
+            toast.error(message);
+            return { success: false, message };
         } catch (e) {
+            console.error("Error verifying mechanic", e);
+            const message = e?.message || "The mechanic could not be verified.";
+            toast.error(message);
+            return { success: false, message };
+        } finally {
             setloadingactivity(false);
-            console.log("errorr... in MechanicVerfication....", e);
         }
     };
     const GetDummyTemplete = async () => {
@@ -1407,6 +1655,7 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 currentPage,
                 hasNext,
                 pageCount,
+                totalCount,
                 specificProduct,
                 setspecificProduct,
                 productSubCategory,
@@ -1421,6 +1670,7 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 images,
                 AllVendors,
                 AllUsers,
+                getSpecificUser,
                 users,
                 getSpecificVendor,
                 vendorDetail,
@@ -1469,7 +1719,9 @@ console.log(">>details for updateProductStatus.", driver_for_me_url);
                 MechanicVerfication,
                 GetMechanicTransactions,
                 mechnanicTransactions,
-                loadingactivity
+                loadingactivity,
+                uploadVariantImages,
+                deleteProductImage
             }}
         >
             {children}

@@ -1,145 +1,91 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Card, Form, Modal, Offcanvas, Spinner, Table } from "react-bootstrap";
+import { FaArrowLeft, FaMapMarkerAlt, FaSearch, FaTools } from "react-icons/fa";
+import { useLocation, useNavigate } from "react-router-dom";
 import Sidebar from "../../../components/Atoms/Sidebar";
 import Header from "../../../components/HOC/Header";
-import { Table, Form, InputGroup, Button, Pagination, Badge, Card, Offcanvas, Modal } from "react-bootstrap";
-import { AiOutlineSearch, AiFillEdit, AiFillDelete } from "react-icons/ai";
-import dayjs from "dayjs";
-import "../../../assets/Css/ProductList.css";
-import { useLocation, useNavigate } from "react-router-dom";
-import { FaEye, FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import { VendorContext } from "../../../context/VendorContext";
-import ToastComponent from "../../../components/HOC/Toast";
+import "../../../assets/Css/OrderManagement.css";
+
+const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
+
 const NearestMechanic = () => {
-    const { assignMechanic, getNearestMechanic, NearestMechanic, toastMessage } = useContext(VendorContext);
+    const { assignMechanic, getNearestMechanic, NearestMechanic, loadingactivity } = useContext(VendorContext);
     const navigate = useNavigate();
     const location = useLocation();
     const item = location.state?.item;
-    const [ShowToast, setShowToast] = useState(false);
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
-    const [showModal, setShowModal] = useState(false);
-    const [notes, setnotes] = useState('');
-    const [selectedMechanicId, setSelectedMechanicId] = useState(null);
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
+    const requestRef = useRef(getNearestMechanic);
+    requestRef.current = getNearestMechanic;
+
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [selectedMechanic, setSelectedMechanic] = useState(null);
+    const [notes, setNotes] = useState("");
+    const [assignmentError, setAssignmentError] = useState("");
+
     useEffect(() => {
-        getNearestMechanic(item?.id);
-    }, []);
+        if (item?.id) requestRef.current(item.id);
+    }, [item?.id]);
 
-    const handleAssignVendor = (MechanicId) => {
-        assignMechanic(item?.id, MechanicId, item?.mechanic_fees_for_mechanic, notes);
-        setShowToast(true);
+    const mechanics = useMemo(() => {
+        const query = searchTerm.trim().toLowerCase();
+        if (!query) return NearestMechanic || [];
+        return (NearestMechanic || []).filter((mechanic) =>
+            [mechanic.mechanic_name, mechanic.contact_email, mechanic.contact_phone, mechanic.specialization]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(query))
+        );
+    }, [NearestMechanic, searchTerm]);
 
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000); //
+    const confirmAssignment = async () => {
+        if (!selectedMechanic || !notes.trim() || loadingactivity) return;
+        const result = await assignMechanic(item.id, selectedMechanic.mechanic_id, item.mechanic_fees_for_mechanic, notes.trim());
+        if (result?.success) navigate(-1);
+        else {
+            setAssignmentError(result?.message || "The mechanic could not be assigned.");
+            setSelectedMechanic(null);
+        }
     };
 
+    const closeModal = () => {
+        if (loadingactivity) return;
+        setSelectedMechanic(null);
+        setNotes("");
+    };
+
+    if (!item?.id) {
+        return <div className="order-missing-state"><FaTools /><h2>Order item is missing</h2><p>Start mechanic assignment from an order item.</p><Button className="savebtn" onClick={() => navigate("/orderList")}>Back to orders</Button></div>;
+    }
+
     return (
-        <div className="d-flex">
-            <div className="d-none d-md-block">
-                <Sidebar /> {/* Sidebar visible on large screens */}
-            </div>
-
-            {/* Offcanvas Sidebar for small screens */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{ width: "100vh", backgroundColor: "#262D34", color: "white" }} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar />
-                </Offcanvas.Body>
-            </Offcanvas>
-            <div style={{ flex: 1 }}>
-                <Header title={"Assign Mechanic"} toggleSidebar={toggleSidebar} />
-
-                <div className="m-4">
-                    <h4>List Of Mechanics for ({item?.product?.name})</h4>
+        <div className="d-flex order-management-shell">
+            <div className="d-none d-md-block"><Sidebar /></div>
+            <Offcanvas show={showSidebar} onHide={() => setShowSidebar(false)} className="bg-dark text-white"><Offcanvas.Header closeButton closeVariant="white"><Offcanvas.Title>Menu</Offcanvas.Title></Offcanvas.Header><Offcanvas.Body className="p-0"><Sidebar /></Offcanvas.Body></Offcanvas>
+            <main className="order-management-main">
+                <Header title="Order Management" toggleSidebar={() => setShowSidebar((visible) => !visible)} />
+                <div className="order-management-page">
+                    <section className="order-page-heading"><div><button type="button" className="order-back-link" onClick={() => navigate(-1)}><FaArrowLeft />Back to order</button><h2>Assign mechanic</h2><p>Select a nearby specialist for {item?.product?.name || "this item"}. Customer fee: {currency.format(Number(item.mechanic_fees_for_customer) || 0)}.</p></div></section>
+                    {assignmentError ? <Alert variant="danger">{assignmentError}</Alert> : null}
+                    <Card className="order-list-card assignment-card">
+                        <Card.Header className="order-list-toolbar"><div><strong>Eligible nearby mechanics</strong><span>Confirm specialization, distance and work instructions</span></div><div className="assignment-search"><FaSearch /><Form.Control type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search mechanics" /></div></Card.Header>
+                        <Card.Body className="p-0">
+                            {loadingactivity && !(NearestMechanic || []).length ? <div className="order-empty-state"><Spinner animation="border" /><strong>Finding nearby mechanics</strong></div> : mechanics.length ? (
+                                <div className="table-responsive"><Table hover className="order-list-table align-middle mb-0"><thead><tr><th>Mechanic</th><th>Contact</th><th>Specialization</th><th>Distance</th><th className="text-end">Action</th></tr></thead><tbody>{mechanics.map((mechanic) => (
+                                    <tr key={mechanic.mechanic_id}><td><strong>{mechanic.mechanic_name || "Unnamed mechanic"}</strong></td><td><strong>{mechanic.contact_email || "No email"}</strong><span className="order-cell-note">{mechanic.contact_phone || "No phone"}</span></td><td>{mechanic.specialization || "General service"}</td><td><span className="assignment-distance"><FaMapMarkerAlt />{mechanic.distance ?? "Unknown"}{Number.isFinite(Number(mechanic.distance)) ? " km" : ""}</span></td><td><div className="order-row-actions"><Button className="savebtn" size="sm" onClick={() => setSelectedMechanic(mechanic)}>Assign mechanic</Button></div></td></tr>
+                                ))}</tbody></Table></div>
+                            ) : <div className="order-empty-state"><FaTools /><strong>{searchTerm ? "No matching mechanics" : "No eligible mechanics found"}</strong><span>{searchTerm ? "Try another name or specialization." : "Check mechanic locations and availability before retrying."}</span></div>}
+                        </Card.Body>
+                    </Card>
                 </div>
-                <Card className="shadow-sm rounded custom-card m-4">
-                    <div className="p-4">
-                        {NearestMechanic?.length > 0 ? (
-                            <Table bordered hover responsive className="align-middle">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>Email Id</th>
-                                        <th>Phone Number</th>
-                                        <th>Vehicle Specialist</th>
-                                        <th>Distance</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
+            </main>
 
-                                <tbody>
-                                    {NearestMechanic.map((mechanic, index) => (
-                                        <tr key={mechanic?.vendor_id}>
-                                            <td>{index + 1}</td>
-                                            <td>{mechanic?.mechanic_name}</td>
-                                            <td>{mechanic?.contact_email}</td>
-                                            <td>{mechanic?.contact_phone}</td>
-                                            <td>{mechanic?.specialization}</td>
-                                            <td>{mechanic?.distance}</td>
-
-                                            <td className="d-flex">
-                                                <Button
-                                                    size="sm"
-                                                    className="savebtn"
-                                                    title="Assign"
-                                                    onClick={() => {
-                                                        setSelectedMechanicId(mechanic?.mechanic_id);
-                                                        setShowModal(true);
-                                                    }}
-                                                >
-                                                    Assign
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </Table>
-                        ) : (
-                            <div className="d-flex justify-content-center align-items-center" style={{ height: "10vh" }}>
-                                <h4>No Mechanic's Found</h4>
-                            </div>
-                        )}
-                    </div>
-                </Card>
-            </div>
-            <Modal show={showModal} onHide={() => setShowModal(false)} centered>
-                <Modal.Header closeButton>
-                    <Modal.Title>Assign Mechanic</Modal.Title>
-                </Modal.Header>
+            <Modal show={Boolean(selectedMechanic)} onHide={closeModal} centered backdrop={loadingactivity ? "static" : true}>
+                <Modal.Header closeButton><Modal.Title>Confirm mechanic assignment</Modal.Title></Modal.Header>
                 <Modal.Body>
-                    <Form.Group>
-                        <Form.Label>What work need to be done?</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={3}
-                            placeholder="Enter notes for mechanic..."
-                            value={notes}
-                            onChange={(e) => setnotes(e.target.value)}
-                        />
-                    </Form.Group>
+                    <p className="mb-3">Assign <strong>{selectedMechanic?.mechanic_name}</strong> to <strong>{item?.product?.name}</strong>.</p>
+                    <Form.Group controlId="mechanic-work-notes"><Form.Label>Work instructions <span className="text-danger">*</span></Form.Label><Form.Control as="textarea" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Describe the installation or repair work clearly" maxLength={1000} /><Form.Text>{notes.length}/1000 characters</Form.Text></Form.Group>
                 </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowModal(false)}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="primary"
-                        onClick={() => {
-                            handleAssignVendor(selectedMechanicId);
-                            setShowModal(false);
-                            setnotes('');
-                        }}
-                    >
-                        Assign
-                    </Button>
-                </Modal.Footer>
+                <Modal.Footer><Button variant="outline-secondary" onClick={closeModal} disabled={loadingactivity}>Cancel</Button><Button variant="primary" onClick={confirmAssignment} disabled={!notes.trim() || loadingactivity}>{loadingactivity ? "Assigning…" : "Confirm assignment"}</Button></Modal.Footer>
             </Modal>
         </div>
     );

@@ -1,293 +1,158 @@
-import React, { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { postAuth } from "../../repository/Repo";
-import { FaAngleDown, FaAngleUp } from "react-icons/fa";
+import React, { useEffect, useState } from "react";
 import { googleLogout } from "@react-oauth/google";
-import { useNavigate, useLocation } from "react-router-dom";
+import {
+    FaBoxOpen,
+    FaChevronDown,
+    FaClipboardList,
+    FaReceipt,
+    FaSignOutAlt,
+    FaStore,
+    FaTachometerAlt,
+    FaTools,
+    FaTruck,
+    FaUserFriends,
+} from "react-icons/fa";
+import { useDispatch, useSelector } from "react-redux";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { getAppToken } from "../../constants/GetAsyncStorageData";
+import { postAuth } from "../../repository/Repo";
+import "../../assets/Css/AdminShell.css";
 
+const productRoutes = [
+    "/productList",
+    "/addSubCategory",
+    "/addProduct",
+    "/addProductbyCsv",
+    "/editSpecificProductpage",
+    "/addvariant",
+];
+
+const productLinks = [
+    { to: "/productList", label: "Products" },
+    { to: "/addProduct", label: "Add product" },
+    { to: "/addProductbyCsv", label: "CSV import" },
+    { to: "/addSubCategory", label: "Categories" },
+];
+
+const workspaceLinks = [
+    { to: "/orderList", label: "Orders", icon: FaClipboardList },
+    { to: "/userList", label: "Customers", icon: FaUserFriends },
+    { to: "/vendorList", label: "Vendors", icon: FaStore },
+    { to: "/mechanicList", label: "Mechanics", icon: FaTools },
+    { to: "/driverList", label: "Drivers", icon: FaTruck },
+    { to: "/transactionList", label: "Transactions", icon: FaReceipt },
+    { to: "/productRequestList", label: "Product requests", icon: FaBoxOpen },
+];
 
 const Sidebar = () => {
-    const [loadingactivity, setloadingactivity] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
-    const dispatch = useDispatch();
+    const location = useLocation();
     const navigate = useNavigate();
-    const location = useLocation(); // Get the current location
-    const userRtoken = useSelector((state) => state.refreshToken);
+    const dispatch = useDispatch();
+    const refreshToken = useSelector((state) => state.refreshToken);
+    const isProductRoute = productRoutes.some((route) => location.pathname.startsWith(route));
+    const [isProductMenuOpen, setIsProductMenuOpen] = useState(isProductRoute);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-    const toggleSubMenu = () => {
-        setIsOpen(!isOpen);
-    };
+    useEffect(() => {
+        if (isProductRoute) setIsProductMenuOpen(true);
+    }, [isProductRoute]);
 
-    const HandleLogout = async () => {
-        setloadingactivity(true);
-        if ((await getAppToken()) === "") {
-            setloadingactivity(false);
-            return alert("Validation Error", "Something went wrong");
-        } else {
-            try {
-                var body = {
-                    refresh_token: userRtoken,
-                };
-                const res = await postAuth("logout", body);
-                console.log(">>res..Logout.", res);
+    const handleLogout = async () => {
+        if (isLoggingOut) return;
+        setIsLoggingOut(true);
 
-                if (res?.data) {
-                    googleLogout();
-                    localStorage.removeItem("usertoken");
-                    localStorage.removeItem("userdetails");
-                    dispatch({
-                        type: "SET_LOGGEDIN",
-                        payload: false,
-                    });
-                    dispatch({
-                        type: "REMOVE_USER_DATA",
-                    });
-                    dispatch({
-                        type: "SET_TOKEN",
-                        payload: null,
-                    });
-
-                    setloadingactivity(false);
-                    // alert("Success", res?.message);
-                    navigate("/login");
-                } else {
-                    setloadingactivity(false);
-                    alert("Error", res?.message);
-                }
-            } catch (e) {
-                setloadingactivity(false);
-                console.log("errorr... in Logout..authcontext", e);
+        try {
+            const token = await getAppToken();
+            if (token) {
+                await postAuth("logout", { refresh_token: refreshToken });
             }
+        } catch (error) {
+            // A failed server logout must not leave a user trapped in the admin UI.
+            console.error("Server logout failed; clearing the local session.", error);
+        } finally {
+            googleLogout();
+            localStorage.removeItem("usertoken");
+            localStorage.removeItem("userdetails");
+            dispatch({ type: "SET_LOGGEDIN", payload: false });
+            dispatch({ type: "REMOVE_USER_DATA" });
+            dispatch({ type: "SET_TOKEN", payload: null });
+            setIsLoggingOut(false);
+            navigate("/login", { replace: true });
         }
     };
-    const isActive = (path) => location.pathname === path;
 
     return (
-        <div className="sidebar text-white p-4" style={{ width: "280px", backgroundColor: "#262D34", height: "200vh" }}>
-            <div className="brand mb-4">
-                <img src={require("../../assets/images/Logo.png")} alt="logo" className="img-fluid" />
-                <h3>Motospar</h3>
+        <aside className="admin-sidebar" aria-label="Admin navigation">
+            <div className="admin-sidebar-brand">
+                <img src={require("../../assets/images/Logo.png")} alt="MotoSpar" />
+                <div>
+                    <strong>MotoSpar</strong>
+                    <span>Admin console</span>
+                </div>
             </div>
-            <ul className="nav flex-column">
-                <li className="nav-item mb-3">
-                    <a href="/Home" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/Home")
-                                    ? require("../../assets/images/dashboard_focus.png")
-                                    : require("../../assets/images/dashboard.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Dashboard
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="#" className="productlist mb-3 d-flex align-items-center gap-2" onClick={toggleSubMenu}>
-                        <div>
-                            <img
-                                src={
-                                    isOpen
-                                        ? require("../../assets/images/productMangement_focus.png")
-                                        : require("../../assets/images/productManagement.png")
-                                }
-                                style={{
-                                    width: 20,
-                                    height: 20,
-                                }}
-                            />
-                        </div>
-                        <div className="d-flex align-items-center gap-3">
-                            Products Management {isOpen ? <FaAngleUp /> : <FaAngleDown />}
-                        </div>
-                    </a>
-                    {isOpen && (
-                        <ul className="nav flex-column ms-3">
-                            <li className="nav-item mb-3">
-                                <a
-                                    href="/productList"
-                                    className="nav-link text-white"
-                                    style={{
-                                        filter: isActive("/productList")
-                                            ? "invert(47%) sepia(99%) saturate(3727%) hue-rotate(220deg) brightness(91%) contrast(105%)"
-                                            : "none",
-                                    }}
-                                >
-                                    Product List
-                                </a>
-                            </li>
-                            <li className="nav-item mb-3">
-                                <a
-                                    href="/addSubCategory"
-                                    className="nav-link text-white"
-                                    style={{
-                                        filter: isActive("/addSubCategory")
-                                            ? "invert(47%) sepia(99%) saturate(3727%) hue-rotate(220deg) brightness(91%) contrast(105%)"
-                                            : "none",
-                                    }}
-                                >
-                                    Add Sub Category
-                                </a>
-                            </li>
-                            <li className="nav-item mb-3">
-                                <a
-                                    href="/addProduct"
-                                    className="nav-link text-white"
-                                    style={{
-                                        filter: isActive("/addProduct")
-                                            ? "invert(47%) sepia(99%) saturate(3727%) hue-rotate(220deg) brightness(91%) contrast(105%)"
-                                            : "none",
-                                    }}
-                                >
-                                    Add New Product
-                                </a>
-                            </li>
-                            <li className="nav-item mb-3">
-                                <a
-                                    href="/addProductbyCsv"
-                                    className="nav-link text-white"
-                                    style={{
-                                        filter: isActive("/addProductbyCsv")
-                                            ? "invert(47%) sepia(99%) saturate(3727%) hue-rotate(220deg) brightness(91%) contrast(105%)"
-                                            : "none",
-                                    }}
-                                >
-                                    Add New Product by csv
-                                </a>
-                            </li>
-                        </ul>
-                    )}
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/orderList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/orderList")
-                                    ? require("../../assets/images/order_focus.png")
-                                    : require("../../assets/images/order.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Order Management
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/userList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/userList")
-                                    ? require("../../assets/images/user_focus.png")
-                                    : require("../../assets/images/user.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        User Management
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/vendorList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/vendorList")
-                                    ? require("../../assets/images/user_focus.png")
-                                    : require("../../assets/images/user.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Vendor Management
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/mechanicList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/mechanicList")
-                                    ? require("../../assets/images/user_focus.png")
-                                    : require("../../assets/images/user.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Mechanic Management
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/driverList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/driverList")
-                                    ? require("../../assets/images/user_focus.png")
-                                    : require("../../assets/images/user.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Driver Management
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/transactionList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/transactionList")
-                                    ? require("../../assets/images/transaction_focus.png")
-                                    : require("../../assets/images/transaction.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Transaction List
-                    </a>
-                </li>
-                <li className="nav-item mb-3">
-                    <a href="/productRequestList" className="productlist mb-3 d-flex align-items-center gap-2">
-                        <img
-                            src={
-                                isActive("/productRequestList")
-                                    ? require("../../assets/images/request_focus.png")
-                                    : require("../../assets/images/request.png")
-                            }
-                            style={{
-                                width: 20,
-                                height: 20,
-                            }}
-                        />
-                        Product Request
-                    </a>
-                </li>
-               
-                {/* Additional menu items */}
-                <li className="nav-item mb-3">
-                    <a
-                        href="#"
-                        className="productlist mb-3 d-flex align-items-center gap-2"
-                        style={{ color: "red" }}
-                        onClick={HandleLogout}
+
+            <nav className="admin-sidebar-nav">
+                <span className="admin-nav-section-label">Workspace</span>
+
+                <NavLink to="/home" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+                    <FaTachometerAlt aria-hidden="true" />
+                    <span>Dashboard</span>
+                </NavLink>
+
+                <button
+                    type="button"
+                    className={`admin-nav-link admin-nav-button ${isProductRoute ? "active" : ""}`}
+                    onClick={() => setIsProductMenuOpen((open) => !open)}
+                    aria-expanded={isProductMenuOpen}
+                    aria-controls="product-navigation"
+                >
+                    <FaBoxOpen aria-hidden="true" />
+                    <span>Product management</span>
+                    <FaChevronDown
+                        className={`admin-nav-chevron ${isProductMenuOpen ? "open" : ""}`}
+                        aria-hidden="true"
+                    />
+                </button>
+
+                {isProductMenuOpen ? (
+                    <div className="admin-subnav" id="product-navigation">
+                        {productLinks.map((link) => (
+                            <NavLink
+                                key={link.to}
+                                to={link.to}
+                                className={({ isActive }) => `admin-subnav-link ${isActive ? "active" : ""}`}
+                            >
+                                {link.label}
+                            </NavLink>
+                        ))}
+                    </div>
+                ) : null}
+
+                {workspaceLinks.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                        key={to}
+                        to={to}
+                        className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}
                     >
-                        Log Out
-                    </a>
-                </li>
-            </ul>
-        </div>
+                        <Icon aria-hidden="true" />
+                        <span>{label}</span>
+                    </NavLink>
+                ))}
+            </nav>
+
+            <div className="admin-sidebar-footer">
+                <button
+                    type="button"
+                    className="admin-logout-button"
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                >
+                    <FaSignOutAlt aria-hidden="true" />
+                    <span>{isLoggingOut ? "Signing out..." : "Sign out"}</span>
+                </button>
+                <small>Production workspace</small>
+            </div>
+        </aside>
     );
 };
 

@@ -1,144 +1,75 @@
-import React, {useContext, useEffect, useState} from "react";
-import Sidebar from "../../../components/Atoms/Sidebar";
-import Header from "../../../components/HOC/Header";
-import {Table, Button, Card, Offcanvas} from "react-bootstrap";
-import {AiOutlineSearch, AiFillDelete} from "react-icons/ai";
-import dayjs from "dayjs";
-import "../../../assets/Css/ProductList.css";
-import {useNavigate} from "react-router-dom";
-import {FaEye, FaArrowLeft, FaArrowRight} from "react-icons/fa";
-import {VendorContext} from "../../../context/VendorContext";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Badge, Button } from "react-bootstrap";
+import { FaEye } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import PeopleDirectoryPage from "../../../components/Atoms/PeopleDirectoryPage";
+import { VendorContext } from "../../../context/VendorContext";
+
+const formatDate = (value) => value
+    ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value))
+    : "Not recorded";
 
 const UserList = () => {
-    const [searchTerm, setSearchTerm] = useState("");
-    const handleSearch = (event) => {
-        setSearchTerm(event.target.value);
-    };
-    const {AllUsers, users, setuserDetail, setCurrentPage, currentPage, hasNext, pageCount} = useContext(VendorContext);
-    const filteruser = users.filter((user) => user?.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
+    const { AllUsers, currentPage, hasNext, loadingactivity, pageCount, setCurrentPage, totalCount, users } = useContext(VendorContext);
     const navigate = useNavigate();
+    const requestRef = useRef(AllUsers);
+    requestRef.current = AllUsers;
+    const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [pageError, setPageError] = useState("");
 
     useEffect(() => {
-        AllUsers(currentPage);
-    }, [currentPage]);
+        const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 350);
+        return () => window.clearTimeout(timer);
+    }, [searchTerm]);
 
-    const handleNextPage = () => {
-        if (hasNext) {
-            setCurrentPage((prevPage) => prevPage + 1);
-        }
-    };
+    useEffect(() => setCurrentPage(1), [debouncedSearch, setCurrentPage]);
 
-    const handlePreviousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage((prevPage) => prevPage - 1);
-        }
-    };
+    useEffect(() => {
+        let active = true;
+        requestRef.current(currentPage || 1, { search: debouncedSearch }).then((result) => {
+            if (active) setPageError(result?.success ? "" : result?.message || "Customers could not be loaded.");
+        });
+        return () => { active = false; };
+    }, [currentPage, debouncedSearch]);
+
+    const columns = [
+        { label: "Customer" }, { label: "Contact" }, { label: "Location" },
+        { label: "Joined" }, { label: "Account" }, { label: "Actions", align: "end" },
+    ];
 
     return (
-        <div className="d-flex flex-column flex-md-row">
-            {/* Sidebar visible on large screens */}
-            <div className="d-none d-md-block">
-                <Sidebar />
-            </div>
-
-            {/* Offcanvas Sidebar for small screens */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{width: "100vh", backgroundColor: "#262D34", color: "white"}} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar />
-                </Offcanvas.Body>
-            </Offcanvas>
-            <div style={{flex: 1}}>
-                <Header title={"User Management"} toggleSidebar={toggleSidebar} />
-                <div className="m-4">
-                    <h4>All User's</h4>
-                </div>
-                <Card className="shadow-sm rounded custom-card m-4">
-                    <div className="p-4">
-                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center mb-3">
-                            <div className="wrapper flex-grow-1 mb-3 mb-md-0">
-                                <AiOutlineSearch className="icon" />
-                                <input
-                                    className="input w-100"
-                                    type="text"
-                                    id="search"
-                                    placeholder="Search"
-                                    value={searchTerm}
-                                    onChange={handleSearch}
-                                />
-                            </div>
-                            <div className="d-flex align-items-center">
-                                <span className="m-1">
-                                    Page {currentPage} of {pageCount}
-                                </span>
-                                <FaArrowLeft
-                                    className="m-1"
-                                    onClick={handlePreviousPage}
-                                    style={{
-                                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                    }}
-                                />
-                                <FaArrowRight
-                                    className="m-1"
-                                    onClick={handleNextPage}
-                                    style={{cursor: !hasNext ? "not-allowed" : "pointer", opacity: !hasNext ? 0.5 : 1}}
-                                />
-                            </div>
-                        </div>
-
-                        <Table bordered hover responsive className="align-middle">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Name</th>
-                                    <th>Email Id</th>
-                                    <th>Phone Number</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteruser.map((user, index) => (
-                                    <tr key={user?.id}>
-                                        <td>{index + 1}</td>
-                                        <td>{user?.full_name}</td>
-                                        <td>{user?.email}</td>
-                                        <td>{user?.phone_number ? user?.phone_number : "N/A"}</td>
-                                        <td>{user?.is_active ? "Active" : "Inactive"}</td>
-                                        <td className="d-flex justify-content-between">
-                                            <Button
-                                                variant="outline-primary"
-                                                size="sm"
-                                                className="me-2"
-                                                title="View"
-                                                onClick={() => {
-                                                    navigate("/userDetail", {state: {userDetail: user}});
-                                                }}
-                                            >
-                                                <FaEye />
-                                            </Button>
-
-                                            <Button variant="outline-danger" size="sm" title="Delete">
-                                                <AiFillDelete />
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    </div>
-                </Card>
-            </div>
-        </div>
+        <PeopleDirectoryPage
+            columns={columns}
+            currentPage={currentPage}
+            description="Review customer identity, contact information, location and account state."
+            emptyCopy={searchTerm ? "Try a different name, email, phone number or location." : "Customer accounts will appear here after registration."}
+            emptyTitle={searchTerm ? "No matching customers" : "No customers found"}
+            error={pageError}
+            eyebrow="Customer accounts"
+            hasNext={hasNext}
+            headerTitle="User Management"
+            items={users || []}
+            loading={loadingactivity}
+            onDismissError={() => setPageError("")}
+            onSearch={setSearchTerm}
+            pageCount={pageCount}
+            renderRow={(user) => (
+                <tr key={user.id}>
+                    <td><strong>{user.full_name || [user.first_name, user.last_name].filter(Boolean).join(" ") || "Unnamed customer"}</strong><span className="people-cell-note">ID {user.id}</span></td>
+                    <td><strong>{user.email || "No email"}</strong><span className="people-cell-note">{user.phone_number || "No phone number"}</span></td>
+                    <td><strong>{[user.city, user.state].filter(Boolean).join(", ") || "Location not set"}</strong><span className="people-cell-note">{[user.postal_code, user.country].filter(Boolean).join(" · ") || "No postal details"}</span></td>
+                    <td><strong>{formatDate(user.date_joined)}</strong></td>
+                    <td><Badge bg={user.is_active ? "success" : "secondary"}>{user.is_active ? "Active" : "Inactive"}</Badge><span className="people-cell-note">{user.is_verified ? "Identity verified" : "Not verified"}</span></td>
+                    <td><div className="people-row-actions"><Button variant="outline-secondary" size="sm" onClick={() => navigate(`/userDetail/${user.id}`, { state: { userDetail: user } })}><FaEye />View profile</Button></div></td>
+                </tr>
+            )}
+            searchPlaceholder="Search name, email, phone or location"
+            searchTerm={searchTerm}
+            setCurrentPage={setCurrentPage}
+            title="Customers"
+            totalCount={totalCount}
+        />
     );
 };
 

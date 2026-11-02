@@ -1,48 +1,61 @@
-import React, {useContext, useEffect, useState} from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Offcanvas } from "react-bootstrap";
 import Dashboard from "../../components/Atoms/Dashboard";
 import Sidebar from "../../components/Atoms/Sidebar";
+import Header from "../../components/HOC/Header";
+import { VendorContext } from "../../context/VendorContext";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../../assets/Css/Homedashboard.css";
-import Header from "../../components/HOC/Header";
-import {Offcanvas} from "react-bootstrap"; // Import Offcanvas and Button
-import {VendorContext} from "../../context/VendorContext";
 
 const Home = () => {
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const { AllOrders, orders, getStatistics, statisticsData } = useContext(VendorContext);
+    const ordersRequestRef = useRef(AllOrders);
+    const statisticsRequestRef = useRef(getStatistics);
 
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
-    const {AllOrders, orders, getStatistics, statisticsData} = useContext(VendorContext);
-    useEffect(() => {
-        getStatistics();
-        AllOrders();
+    ordersRequestRef.current = AllOrders;
+    statisticsRequestRef.current = getStatistics;
+
+    const loadDashboard = useCallback(async () => {
+        setIsRefreshing(true);
+        await Promise.all([statisticsRequestRef.current(), ordersRequestRef.current(1)]);
+        setLastUpdated(new Date());
+        setIsRefreshing(false);
     }, []);
+
+    useEffect(() => {
+        loadDashboard();
+    }, [loadDashboard]);
+
+    const toggleSidebar = () => setShowSidebar((visible) => !visible);
+
     return (
-        <div className="d-flex flex-column flex-md-row">
-            {/* Sidebar for larger screens */}
+        <div className="d-flex admin-dashboard-shell">
             <div className="d-none d-md-block">
                 <Sidebar />
             </div>
 
-            {/* Offcanvas sidebar for mobile */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{width: "100vh", backgroundColor: "#262D34", color: "white"}} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
+            <Offcanvas show={showSidebar} onHide={toggleSidebar} className="bg-dark text-white">
+                <Offcanvas.Header closeButton closeVariant="white">
+                    <Offcanvas.Title>Menu</Offcanvas.Title>
                 </Offcanvas.Header>
-                <Offcanvas.Body>
+                <Offcanvas.Body className="p-0">
                     <Sidebar />
                 </Offcanvas.Body>
             </Offcanvas>
 
-            {/* Main Content Area */}
-            <div className="flex-grow-1 p-3">
-                {/* Header with button to toggle sidebar */}
-                <Header title={"Dashboard"} toggleSidebar={toggleSidebar} />
-                <Dashboard statisticsData={statisticsData} orders={orders} />
-            </div>
+            <main className="admin-dashboard-main">
+                <Header title="Dashboard" toggleSidebar={toggleSidebar} />
+                <Dashboard
+                    statisticsData={statisticsData}
+                    orders={orders}
+                    isRefreshing={isRefreshing}
+                    lastUpdated={lastUpdated}
+                    onRefresh={loadDashboard}
+                />
+            </main>
         </div>
     );
 };

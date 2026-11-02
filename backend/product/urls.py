@@ -40,6 +40,7 @@ urlpatterns = [
     # ! URLS for add / edit / view / delete products.
     path('api/admin/products/add/', views.add_product, name='add_product'),
     path('api/admin/variant/<uuid:product_id>/add/', views.add_variant_and_images, name='add_variant_and_images'),
+    path('api/admin/variant/<uuid:variant_id>/upload-images/', views.upload_variant_images, name='upload_variant_images'),
     path('api/admin/products/<uuid:product_id>/edit/', views.edit_product, name='edit_product'),
     path('api/admin/variant/<uuid:variant_id>/edit/', views.edit_variant_and_images, name='edit_variant_and_images'),
     path('api/products/', views.view_products, name='view_products'),
@@ -66,6 +67,23 @@ urlpatterns = [
 
     # ! URL for adding product request by vendor.
     path('api/vendor/product-request/add/', views.add_product_request, name='add_product_request'),
+
+    # ! URLs for vendor-owned product request images.
+    path(
+        'api/vendor/product-request/<uuid:product_request_id>/upload-images/',
+        views.upload_product_request_images,
+        name='upload_product_request_images',
+    ),
+    path(
+        'api/vendor/product-request/<uuid:product_request_id>/images/',
+        views.list_product_request_images,
+        name='list_product_request_images',
+    ),
+    path(
+        'api/vendor/product-request-images/<uuid:product_request_image_id>/delete/',
+        views.delete_product_request_image,
+        name='delete_product_request_image',
+    ),
 
     # ! URL for vendors to view their product requests.
     path('api/vendor/product-request/view/', views.view_product_request_vendor, name='view_product_request_vendor'),

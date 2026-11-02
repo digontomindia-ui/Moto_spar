@@ -1,0 +1,666 @@
+.order-management-shell {
+    min-height: 100vh;
+    background: var(--admin-canvas, #f5f7fb);
+}
+
+.order-management-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.order-management-page {
+    width: 100%;
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 4px clamp(18px, 3vw, 34px) 40px;
+}
+
+.order-page-heading,
+.order-detail-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 22px;
+    margin-bottom: 22px;
+}
+
+.order-page-heading h2,
+.order-detail-heading h2 {
+    margin: 0;
+    color: #172033;
+    font-size: clamp(1.65rem, 3vw, 2.1rem);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+}
+
+.order-page-heading p,
+.order-detail-heading p {
+    margin: 6px 0 0;
+    color: #667085;
+    font-size: 0.88rem;
+}
+
+.order-eyebrow {
+    display: block;
+    margin-bottom: 4px;
+    color: #ea580c;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.order-filter-card,
+.order-list-card,
+.order-timeline-card,
+.order-detail-card {
+    border: 1px solid #e6eaf0;
+    border-radius: 14px;
+    box-shadow: 0 5px 20px rgba(31, 41, 55, 0.055);
+}
+
+.order-filter-card {
+    margin-bottom: 20px;
+}
+
+.order-filter-card .card-body {
+    padding: 17px 18px;
+}
+
+.order-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
+    align-items: end;
+    gap: 12px;
+}
+
+.order-management-page .form-label {
+    margin-bottom: 5px;
+    color: #475467;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.order-management-page .form-control,
+.order-management-page .form-select {
+    min-height: 40px;
+    border-color: #dfe4eb;
+    border-radius: 9px;
+    font-size: 0.78rem;
+}
+
+.order-management-page .form-control:focus,
+.order-management-page .form-select:focus {
+    border-color: #fb923c;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.order-filter-actions,
+.order-assignment-actions,
+.order-save-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.order-filter-actions .btn,
+.order-assignment-actions .btn,
+.order-save-row .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 40px;
+    border-radius: 9px;
+    font-size: 0.75rem;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.order-list-card {
+    overflow: hidden;
+}
+
+.order-list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 15px 18px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f4;
+}
+
+.order-list-toolbar > div:first-child {
+    display: flex;
+    flex-direction: column;
+}
+
+.order-list-toolbar strong {
+    color: #172033;
+    font-size: 0.9rem;
+}
+
+.order-list-toolbar span {
+    margin-top: 2px;
+    color: #98a2b3;
+    font-size: 0.68rem;
+}
+
+.order-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #667085;
+    font-size: 0.72rem;
+}
+
+.order-pagination > span {
+    margin: 0 4px 0 0;
+    color: #667085;
+    white-space: nowrap;
+}
+
+.order-pagination .btn {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #e2e7ee;
+    border-radius: 9px;
+}
+
+.order-list-table thead th {
+    padding: 12px 15px;
+    color: #667085;
+    background: #f9fafb;
+    border-bottom: 1px solid #e6eaf0;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.order-list-table tbody td {
+    padding: 14px 15px;
+    color: #475467;
+    border-bottom-color: #edf0f4;
+    font-size: 0.75rem;
+    vertical-align: middle;
+}
+
+.order-list-table tbody td > strong,
+.order-customer-name {
+    display: block;
+    color: #172033;
+    font-weight: 650;
+}
+
+.order-code-button {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    text-align: left;
+}
+
+.order-code-button strong {
+    color: #172033;
+}
+
+.order-code-button:hover strong {
+    color: #c2410c;
+}
+
+.order-code-button span,
+.order-cell-note {
+    display: block;
+    max-width: 230px;
+    margin-top: 3px;
+    overflow: hidden;
+    color: #98a2b3;
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.order-status-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.order-status-stack .badge,
+.order-list-table .badge {
+    font-size: 0.61rem;
+    font-weight: 650;
+}
+
+.order-status-stack > span {
+    color: #98a2b3;
+    font-size: 0.62rem;
+}
+
+.order-row-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.assignment-search {
+    position: relative;
+    width: min(340px, 100%);
+}
+
+.assignment-search > svg {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 1;
+    color: #98a2b3;
+    transform: translateY(-50%);
+}
+
+.assignment-search .form-control {
+    padding-left: 39px;
+    background: #f9fafb;
+}
+
+.assignment-distance {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #475467;
+    white-space: nowrap;
+}
+
+.assignment-distance svg {
+    color: #f97316;
+}
+
+.order-empty-state,
+.order-missing-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 330px;
+    padding: 40px 20px;
+    color: #98a2b3;
+    text-align: center;
+}
+
+.order-empty-state > svg,
+.order-missing-state > svg {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 12px;
+}
+
+.order-empty-state strong,
+.order-missing-state h2 {
+    color: #344054;
+}
+
+.order-empty-state span,
+.order-missing-state p {
+    margin-top: 5px;
+    font-size: 0.76rem;
+}
+
+.order-missing-state {
+    min-height: 100vh;
+    background: #f5f7fb;
+}
+
+.order-missing-state .btn {
+    margin-top: 12px;
+}
+
+.order-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+    padding: 0;
+    color: #667085;
+    background: transparent;
+    border: 0;
+    font-size: 0.76rem;
+    font-weight: 650;
+}
+
+.order-back-link:hover {
+    color: #c2410c;
+}
+
+.order-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.order-assignment-actions {
+    flex-wrap: wrap;
+}
+
+.order-alert {
+    border-radius: 12px;
+}
+
+.order-timeline-card {
+    margin-bottom: 20px;
+}
+
+.order-timeline-card .card-body {
+    padding: 18px 22px;
+}
+
+.order-status-timeline {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+}
+
+.order-status-timeline > div {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #98a2b3;
+    font-size: 0.7rem;
+}
+
+.order-status-timeline > div::after {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    left: 38px;
+    height: 2px;
+    background: #e4e7ec;
+    content: "";
+    transform: translateY(-50%);
+}
+
+.order-status-timeline > div:last-child::after {
+    display: none;
+}
+
+.order-status-timeline span {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    background: #f2f4f7;
+    border: 2px solid #e4e7ec;
+    border-radius: 50%;
+    font-weight: 700;
+}
+
+.order-status-timeline strong {
+    position: relative;
+    z-index: 1;
+    padding-right: 8px;
+    background: #fff;
+}
+
+.order-status-timeline > div.active {
+    color: #c2410c;
+}
+
+.order-status-timeline > div.active span {
+    color: #fff;
+    background: #f97316;
+    border-color: #f97316;
+}
+
+.order-status-timeline > div.active::after {
+    background: #fdba74;
+}
+
+.order-status-timeline.cancelled {
+    display: block;
+}
+
+.order-timeline-cancelled {
+    color: #b42318 !important;
+}
+
+.order-timeline-cancelled span {
+    background: #ef4444 !important;
+    border-color: #ef4444 !important;
+}
+
+.order-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.38fr) minmax(580px, 1fr);
+    align-items: start;
+    gap: 20px;
+}
+
+.order-detail-side,
+.order-detail-content {
+    display: grid;
+    gap: 20px;
+}
+
+.order-detail-card .card-body {
+    padding: 20px;
+}
+
+.order-detail-card h3 {
+    margin: 0;
+    color: #172033;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.order-contact-list {
+    display: grid;
+    gap: 13px;
+    margin-top: 18px;
+}
+
+.order-contact-list span {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 9px;
+    color: #667085;
+    font-size: 0.74rem;
+    line-height: 1.5;
+}
+
+.order-contact-list svg {
+    margin-top: 2px;
+    color: #f97316;
+}
+
+.order-summary-list {
+    display: grid;
+    gap: 11px;
+    margin-top: 14px;
+}
+
+.order-summary-list > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    color: #667085;
+    font-size: 0.74rem;
+}
+
+.order-summary-list strong {
+    color: #344054;
+}
+
+.order-summary-list .total {
+    margin-top: 4px;
+    padding-top: 12px;
+    border-top: 1px solid #e6eaf0;
+    font-size: 0.84rem;
+}
+
+.order-summary-list .total strong {
+    color: #172033;
+}
+
+.order-reference-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 18px;
+    padding: 12px;
+    color: #667085;
+    background: #f8fafc;
+    border-radius: 9px;
+    font-size: 0.66rem;
+}
+
+.order-reference-list span {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.order-reference-list strong {
+    overflow-wrap: anywhere;
+    color: #344054;
+    text-align: right;
+}
+
+.order-item-picker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 16px 20px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f4;
+}
+
+.order-item-picker .form-select {
+    width: min(380px, 50%);
+}
+
+.order-item-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.order-item-facts > div {
+    display: flex;
+    flex-direction: column;
+    padding: 13px;
+    background: #f8fafc;
+    border: 1px solid #edf0f4;
+    border-radius: 10px;
+}
+
+.order-item-facts span {
+    color: #98a2b3;
+    font-size: 0.66rem;
+}
+
+.order-item-facts strong {
+    margin-top: 5px;
+    overflow: hidden;
+    color: #344054;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.order-control-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.order-control-heading p {
+    margin: 4px 0 0;
+    color: #98a2b3;
+    font-size: 0.7rem;
+}
+
+.order-control-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.order-driver-url {
+    grid-column: 1 / -1;
+}
+
+.order-save-row {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #edf0f4;
+}
+
+@media (max-width: 1399.98px) {
+    .order-filter-grid {
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+    }
+
+    .order-filter-actions {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 1199.98px) {
+    .order-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .order-detail-side {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .order-status-timeline strong {
+        display: none;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .order-page-heading,
+    .order-detail-heading,
+    .order-list-toolbar,
+    .order-item-picker {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .order-filter-grid,
+    .order-detail-side,
+    .order-control-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .order-filter-actions {
+        grid-column: auto;
+    }
+
+    .order-filter-actions .btn,
+    .order-assignment-actions .btn {
+        flex: 1;
+    }
+
+    .order-item-picker .form-select {
+        width: 100%;
+    }
+
+    .order-item-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

@@ -1,131 +1,111 @@
-// components/RecentOrders.js
 import React from "react";
-import {Table, Card, Badge, Button} from "react-bootstrap";
-import {FaEdit, FaEye, FaTrash} from "react-icons/fa"; // Icons for Actions
-import {AiOutlineSearch, AiFillEdit, AiFillDelete} from "react-icons/ai";
 import dayjs from "dayjs";
-import "../../assets/Css/ProductList.css";
-import {useNavigate} from "react-router-dom";
-const RecentOrders = ({data}) => {
-    const navigate = useNavigate();
-    const filterOrder = (data || [])?.filter((order) => {
-        // Check if any item in order_items has the desired status
-        return order.order_items?.some(
-            (item) => item.order_status === "ADMIN_REVIEW" || item.order_status === "PENDING"
-        );
-    });
-    console.log("pending", data);
-    return (
-        <Card className="shadow-sm rounded custom-card">
-            <Card.Body>
-                <h4>Pending Orders</h4>
-                <Table bordered responsive className="align-middle">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Order Date</th>
-                            <th>Customer</th>
-                            <th>Product Name</th>
-                            <th>Price</th>
-                            <th>Delivery No.</th>
-                            <th>Order Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filterOrder.map((order, index) => {
-                            const totalItems = order?.order_items?.length || 0; // Total items in this order
-                            const isNewUser =
-                                index === 0 || // First order always starts a new user group
-                                filterOrder[index - 1]?.customer_details?.id !== order?.customer_details?.id;
+import { Badge, Button, Card, Spinner, Table } from "react-bootstrap";
+import { FaArrowRight, FaClipboardCheck } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 
-                            return order?.order_items?.map((item, itemIndex) => (
-                                <tr
-                                    key={`${order?.id}-${item?.id}`}
-                                    className={isNewUser ? "bg-dark text-white" : "bg-light"}
-                                >
-                                    {/* Render Order ID, Date, and Customer Name only for the first item */}
-                                    {itemIndex === 0 && (
-                                        <>
-                                            <td rowSpan={totalItems} className={isNewUser ? "border-top" : ""}>
-                                                {index + 1}
-                                            </td>{" "}
-                                            {/* Order Index */}
-                                            <td rowSpan={totalItems} className={isNewUser ? "border-top" : ""}>
-                                                {dayjs(order?.created_at).format("YYYY-MM-DD")}
-                                            </td>{" "}
-                                            {/* Order Date */}
-                                            <td rowSpan={totalItems} className={isNewUser ? "border-top" : ""}>
-                                                {order?.customer_details?.full_name || "N/A"}
-                                            </td>{" "}
-                                            {/* Customer Name */}
-                                        </>
-                                    )}
-                                    {/* Product Details */}
-                                    <td>{item?.product?.name || "N/A"}</td> {/* Product Name */}
-                                    {itemIndex === 0 && (
-                                        <td rowSpan={totalItems} className={isNewUser ? "border-top" : ""}>
-                                            {order?.total_price || "N/A"}
-                                        </td>
-                                    )}
-                                    <td>{order?.order_code || "N/A"}</td> {/* Item Price */}
-                                    <td>
-                                        {item?.order_status === "ADMIN_REVIEW" ? (
-                                            <Badge pill bg="warning">
-                                                In Review
-                                            </Badge>
-                                        ) : item?.order_status === "PENDING" ? (
-                                            <Badge pill bg="warning">
-                                                Pending
-                                            </Badge>
-                                        ) : item?.order_status === "ASSIGNED_TO_VENDOR" ? (
-                                            <Badge pill bg="info">
-                                                Request Sent
-                                            </Badge>
-                                        ) : item?.order_status === "VENDOR_ACCEPTED" ? (
-                                            <Badge pill bg="success">
-                                                Request Accepted
-                                            </Badge>
-                                        ) : item?.order_status === "DELIVERED" ? (
-                                            <Badge pill bg="success">
-                                                Delivered
-                                            </Badge>
-                                        ) : item?.order_status === "CANCELLED" ? (
-                                            <Badge pill bg="danger">
-                                                Cancelled
-                                            </Badge>
-                                        ) : (
-                                            "N/A"
-                                        )}
-                                    </td>{" "}
-                                    {/* Order Status */}
-                                    {/* Render Actions only for the first item */}
-                                    <td>
-                                        <Button variant="outline-primary" size="sm" className="me-2" title="View">
-                                            <FaEye />
-                                        </Button>
-                                        <Button
-                                            variant="outline-success"
-                                            size="sm"
-                                            className="me-2"
-                                            title="Edit"
-                                            onClick={() => {
-                                                navigate("/orderDetail", {
-                                                    state: {orderDetail: order, itemdetail: item},
-                                                });
-                                            }}
-                                        >
-                                            <AiFillEdit />
-                                        </Button>
-                                        <Button variant="outline-danger" size="sm" title="Delete">
-                                            <AiFillDelete />
-                                        </Button>
-                                    </td>
+const currency = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+});
+
+const pendingStatuses = new Set(["ADMIN_REVIEW", "PENDING"]);
+
+const statusPresentation = {
+    ADMIN_REVIEW: { label: "Admin review", background: "warning", text: "dark" },
+    PENDING: { label: "Pending", background: "secondary" },
+};
+
+const RecentOrders = ({ data, loading }) => {
+    const navigate = useNavigate();
+    const pendingItems = (Array.isArray(data) ? data : [])
+        .flatMap((order) =>
+            (order?.order_items || [])
+                .filter((item) => pendingStatuses.has(item?.order_status))
+                .map((item) => ({ order, item }))
+        )
+        .slice(0, 8);
+
+    const openOrder = (order, item) => {
+        navigate("/orderDetail", { state: { orderDetail: order, itemdetail: item } });
+    };
+
+    return (
+        <Card className="dashboard-panel dashboard-orders-panel">
+            <Card.Header>
+                <div>
+                    <h3>Orders requiring attention</h3>
+                    <p>Pending orders and items waiting for admin review</p>
+                </div>
+                <Button variant="link" onClick={() => navigate("/orderList")}>
+                    View all orders <FaArrowRight className="ms-2" aria-hidden="true" />
+                </Button>
+            </Card.Header>
+
+            <Card.Body className="p-0">
+                {loading ? (
+                    <div className="dashboard-panel-loading">
+                        <Spinner animation="border" />
+                    </div>
+                ) : pendingItems.length ? (
+                    <div className="table-responsive">
+                        <Table hover className="dashboard-orders-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Date</th>
+                                    <th>Customer</th>
+                                    <th>Product</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th className="text-end">Action</th>
                                 </tr>
-                            ));
-                        })}
-                    </tbody>
-                </Table>
+                            </thead>
+                            <tbody>
+                                {pendingItems.map(({ order, item }) => {
+                                    const status = statusPresentation[item?.order_status] || {
+                                        label: item?.order_status || "Unknown",
+                                        background: "light",
+                                        text: "dark",
+                                    };
+
+                                    return (
+                                        <tr key={`${order?.id}-${item?.id}`}>
+                                            <td>
+                                                <strong>{order?.order_code || "No reference"}</strong>
+                                            </td>
+                                            <td>{dayjs(order?.created_at).format("DD MMM YYYY")}</td>
+                                            <td>{order?.customer_details?.full_name || "Not available"}</td>
+                                            <td>{item?.product?.name || "Product unavailable"}</td>
+                                            <td>{currency.format(Number(item?.item_total_price ?? order?.total_price) || 0)}</td>
+                                            <td>
+                                                <Badge bg={status.background} text={status.text} pill>
+                                                    {status.label}
+                                                </Badge>
+                                            </td>
+                                            <td className="text-end">
+                                                <Button
+                                                    variant="outline-primary"
+                                                    size="sm"
+                                                    onClick={() => openOrder(order, item)}
+                                                >
+                                                    Review
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </Table>
+                    </div>
+                ) : (
+                    <div className="dashboard-orders-empty">
+                        <FaClipboardCheck aria-hidden="true" />
+                        <strong>No orders need attention</strong>
+                        <span>New pending orders will appear here automatically.</span>
+                    </div>
+                )}
             </Card.Body>
         </Card>
     );

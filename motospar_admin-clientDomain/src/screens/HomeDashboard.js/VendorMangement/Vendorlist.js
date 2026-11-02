@@ -1,234 +1,108 @@
-import React, { useContext, useEffect, useState } from "react";
-import Sidebar from "../../../components/Atoms/Sidebar";
-import Header from "../../../components/HOC/Header";
-import { Table, Button, Card, Offcanvas, Badge, Spinner } from "react-bootstrap";
-import { AiOutlineSearch, AiFillDelete } from "react-icons/ai";
-import { FaEye, FaArrowLeft, FaArrowRight } from "react-icons/fa";
-import { VendorContext } from "../../../context/VendorContext";
-import DeleteConfirmationModal from "../../../components/Atoms/DeleteModal";
-import ToastComponent from "../../../components/HOC/Toast";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Badge, Button } from "react-bootstrap";
+import { FaCheckCircle, FaEye } from "react-icons/fa";
+import { FiTrash2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import DeleteConfirmationModal from "../../../components/Atoms/DeleteModal";
+import PeopleDirectoryPage from "../../../components/Atoms/PeopleDirectoryPage";
+import { VendorContext } from "../../../context/VendorContext";
+
+const vendorName = (vendor) => vendor?.store_name || [vendor?.first_name, vendor?.last_name].filter(Boolean).join(" ") || "Unnamed vendor";
 
 const Vendorlist = () => {
+    const { AllVendors, currentPage, deleteCommon, hasNext, loadingactivity, pageCount, setCurrentPage, totalCount, vendorVerfication, vendors } = useContext(VendorContext);
     const navigate = useNavigate();
+    const requestRef = useRef(AllVendors);
+    requestRef.current = AllVendors;
     const [searchTerm, setSearchTerm] = useState("");
-    const [showToast, setShowToast] = useState(false);
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
-    const [loadingid, setloadingid] = useState('')
-
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
-    const handleSearch = (event) => {
-        setSearchTerm(event.target.value);
-    };
-
-    const {
-        AllVendors,
-        vendorVerfication,
-        vendors,
-        setCurrentPage,
-        currentPage,
-        hasNext,
-        pageCount,
-        deleteCommon,
-        toastMessage,
-        loadingactivity
-    } = useContext(VendorContext);
-
-    const filterVendor = vendors.filter(
-        (vendor) =>
-            vendor?.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            vendor?.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            vendor?.store_postal_code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [pageError, setPageError] = useState("");
+    const [verifyTarget, setVerifyTarget] = useState(null);
+    const [deleteTarget, setDeleteTarget] = useState(null);
 
     useEffect(() => {
-        AllVendors(currentPage);
-    }, [currentPage]);
+        const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 350);
+        return () => window.clearTimeout(timer);
+    }, [searchTerm]);
 
-    const handleNextPage = () => {
-        if (hasNext) {
-            setCurrentPage((prevPage) => prevPage + 1);
+    useEffect(() => setCurrentPage(1), [debouncedSearch, setCurrentPage]);
+
+    useEffect(() => {
+        let active = true;
+        requestRef.current(currentPage || 1, { search: debouncedSearch }).then((result) => {
+            if (active) setPageError(result?.success ? "" : result?.message || "Vendors could not be loaded.");
+        });
+        return () => { active = false; };
+    }, [currentPage, debouncedSearch]);
+
+    const refresh = () => requestRef.current(currentPage, { search: debouncedSearch });
+
+    const confirmVerification = async () => {
+        if (!verifyTarget || loadingactivity) return;
+        const result = await vendorVerfication(verifyTarget.user);
+        if (result?.success) {
+            setVerifyTarget(null);
+            await refresh();
+        } else {
+            setPageError(result?.message || "The vendor could not be verified.");
+            setVerifyTarget(null);
         }
-    };
-
-    const handlePreviousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage((prevPage) => prevPage - 1);
-        }
-    };
-
-    const handleViewClick = (vendorUserId) => {
-        navigate("/vendorDetail", { state: { vendorId: vendorUserId } });
-    };
-
-    const handleVerfication = async (vendorUserId) => {
-        setloadingid(vendorUserId)
-        await vendorVerfication(vendorUserId);
-        await AllVendors(currentPage);
-        setShowToast(true);
-
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000);
-    };
-
-    const [showModal, setShowModal] = useState(false);
-    const [deleteId, setDeleteId] = useState(null);
-
-    const handleDeleteClick = (id) => {
-        setDeleteId(id);
-        setShowModal(true);
     };
 
     const confirmDelete = async () => {
-        if (deleteId) {
-            const response = await deleteCommon(`admin/vendors/${deleteId}/delete`);
-            if (response.success) {
-                AllVendors(currentPage); // Refresh table after deletion
-            } else {
-                console.error("Failed to delete vendor");
-            }
-            setShowModal(false);
+        if (!deleteTarget || loadingactivity) return;
+        const result = await deleteCommon(`admin/vendors/${deleteTarget.id}/delete`);
+        if (result?.success) {
+            setDeleteTarget(null);
+            if ((vendors || []).length === 1 && currentPage > 1) setCurrentPage((page) => page - 1);
+            else await refresh();
+        } else {
+            setPageError(result?.message || "The vendor could not be deleted.");
+            setDeleteTarget(null);
         }
     };
 
+    const columns = [
+        { label: "Vendor" }, { label: "Contact" }, { label: "Location" },
+        { label: "Business" }, { label: "Verification" }, { label: "Actions", align: "end" },
+    ];
+
     return (
-        <div className="d-flex flex-column flex-md-row">
-            {/* Sidebar visible on large screens */}
-            <div className="d-none d-md-block">
-                <Sidebar />
-            </div>
-
-            {/* Offcanvas Sidebar for small screens */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{ width: "100vh", backgroundColor: "#262D34", color: "white" }} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar />
-                </Offcanvas.Body>
-            </Offcanvas>
-
-            <div style={{ flex: 1 }}>
-                <Header title={"Vendor Management"} toggleSidebar={toggleSidebar} />
-                <div className="m-4">
-                    <h4>All Vendors</h4>
-                </div>
-                <Card className="shadow-sm rounded custom-card m-4">
-                    <div className="p-4">
-                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center mb-3">
-                            <div className="wrapper flex-grow-1 mb-3 mb-md-0">
-                                <AiOutlineSearch className="icon" />
-                                <input
-                                    className="input w-100"
-                                    type="text"
-                                    id="search"
-                                    placeholder="Search by name or Area code"
-                                    value={searchTerm}
-                                    onChange={handleSearch}
-                                />
-                            </div>
-
-                            <div className="d-flex align-items-center">
-                                <span className="m-1">
-                                    Page {currentPage} of {pageCount}
-                                </span>
-                                <FaArrowLeft
-                                    className="m-1"
-                                    onClick={handlePreviousPage}
-                                    style={{
-                                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                    }}
-                                />
-                                <FaArrowRight
-                                    className="m-1"
-                                    onClick={handleNextPage}
-                                    style={{ cursor: !hasNext ? "not-allowed" : "pointer", opacity: !hasNext ? 0.5 : 1 }}
-                                />
-                            </div>
-                        </div>
-
-                        <Table bordered hover responsive className="align-middle">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Name</th>
-                                    <th>Email Id</th>
-                                    <th>Area Code</th>
-                                    <th>Phone Number</th>
-                                    <th>Verification</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filterVendor.map((vendor, index) => (
-                                    <tr key={vendor?.id}>
-                                        <td>{index + 1}</td>
-                                        <td>
-                                            {vendor?.first_name} {vendor?.last_name}
-                                        </td>
-                                        <td>{vendor?.email}</td>
-                                        <td>{vendor?.store_postal_code || "N/A"}</td>
-                                        <td>{vendor?.store_contact_phone || "N/A"}</td>
-                                        <td>
-                                            {vendor?.is_verified ? (
-                                                <Badge pill bg="success">
-                                                    Verified
-                                                </Badge>
-                                            ) : (
-                                                <Button
-                                                    variant="outline-success"
-                                                    size="sm"
-                                                    title="Success"
-                                                    onClick={() => handleVerfication(vendor?.user)}
-                                                >
-                                                    {loadingactivity && loadingid === vendor?.id ? <Spinner key={vendor?.id} /> : "Verify Now"}
-                                                </Button>
-                                            )}
-                                        </td>
-                                        <td className="d-flex">
-                                            <Button
-                                                variant="outline-primary"
-                                                size="sm"
-                                                className="me-2"
-                                                title="View"
-                                                onClick={() => handleViewClick(vendor?.user)}
-                                            >
-                                                <FaEye />
-                                            </Button>
-
-                                            <Button
-                                                variant="outline-danger"
-                                                size="sm"
-                                                title="Delete"
-                                                onClick={() => handleDeleteClick(vendor?.id)}
-                                            >
-                                                <AiFillDelete />
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    </div>
-                </Card>
-
-                {/* Toast for notifications */}
-
-                {/* Delete confirmation modal */}
-                <DeleteConfirmationModal
-                    show={showModal}
-                    onDeleteConfirm={confirmDelete}
-                    onCancel={() => setShowModal(false)}
-                    message={"This Vendor will be deleted immediately. You can’t undo this action."}
-                />
-            </div>
-        </div>
+        <>
+            <PeopleDirectoryPage
+                columns={columns}
+                currentPage={currentPage}
+                description="Review vendor businesses, contact details, locations and verification state."
+                emptyCopy={searchTerm ? "Try a different business name, email, phone number or location." : "Vendor profiles will appear here after registration."}
+                emptyTitle={searchTerm ? "No matching vendors" : "No vendors found"}
+                error={pageError}
+                eyebrow="Marketplace partners"
+                hasNext={hasNext}
+                headerTitle="Vendor Management"
+                items={vendors || []}
+                loading={loadingactivity}
+                onDismissError={() => setPageError("")}
+                onSearch={setSearchTerm}
+                pageCount={pageCount}
+                renderRow={(vendor) => (
+                    <tr key={vendor.id}>
+                        <td><strong>{vendorName(vendor)}</strong><span className="people-cell-note">{[vendor.first_name, vendor.last_name].filter(Boolean).join(" ") || "Owner name not set"}</span></td>
+                        <td><strong>{vendor.store_contact_email || vendor.email || "No email"}</strong><span className="people-cell-note">{vendor.store_contact_phone || vendor.phone_number || "No phone number"}</span></td>
+                        <td><strong>{[vendor.store_city, vendor.store_state].filter(Boolean).join(", ") || "Location not set"}</strong><span className="people-cell-note">{[vendor.store_postal_code, vendor.store_country].filter(Boolean).join(" · ") || "No postal details"}</span></td>
+                        <td><strong>{vendor.gst_number || "GST not recorded"}</strong><span className="people-cell-note">{vendor.website_url || "No website"}</span></td>
+                        <td>{vendor.is_verified ? <Badge bg="success">Verified</Badge> : <Button variant="outline-success" size="sm" onClick={() => setVerifyTarget(vendor)}><FaCheckCircle />Verify</Button>}</td>
+                        <td><div className="people-row-actions"><Button variant="outline-secondary" size="sm" onClick={() => navigate("/vendorDetail", { state: { vendorId: vendor.user } })}><FaEye />View profile</Button><Button variant="outline-danger" size="sm" onClick={() => setDeleteTarget(vendor)}><FiTrash2 /><span className="visually-hidden">Delete {vendorName(vendor)}</span></Button></div></td>
+                    </tr>
+                )}
+                searchPlaceholder="Search business, contact or location"
+                searchTerm={searchTerm}
+                setCurrentPage={setCurrentPage}
+                title="Vendors"
+                totalCount={totalCount}
+            />
+            <DeleteConfirmationModal show={Boolean(verifyTarget)} onCancel={() => !loadingactivity && setVerifyTarget(null)} onDeleteConfirm={confirmVerification} title="Verify this vendor?" message={`Confirm that ${vendorName(verifyTarget)} has passed the required business checks.`} confirmLabel={loadingactivity ? "Verifying…" : "Confirm verification"} confirmVariant="success" isLoading={loadingactivity} />
+            <DeleteConfirmationModal show={Boolean(deleteTarget)} onCancel={() => !loadingactivity && setDeleteTarget(null)} onDeleteConfirm={confirmDelete} title="Delete this vendor?" message={`${vendorName(deleteTarget)} will be removed from the active vendor directory. This action cannot be undone.`} isLoading={loadingactivity} />
+        </>
     );
 };
 

@@ -1,41 +1,55 @@
 import React from "react";
-import { Container, Navbar, Button } from "react-bootstrap";
-import { FaBell, FaBars } from "react-icons/fa";
+import { Button } from "react-bootstrap";
+import { FaBars, FaRegBell } from "react-icons/fa";
 import { useSelector } from "react-redux";
+import { NavLink } from "react-router-dom";
+import { resolveImageUrl } from "../../utils/imageUtils";
+import "../../assets/Css/AdminShell.css";
+
+const getDisplayName = (user) => {
+    const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+    return fullName || user?.name || user?.email || "Administrator";
+};
 
 const Header = ({ title, toggleSidebar }) => {
     const user = useSelector((state) => state.userData);
+    const displayName = getDisplayName(user);
+    const profileImage = user?.profile_picture
+        ? resolveImageUrl(user.profile_picture)
+        : require("../../assets/images/defaultprofile.webp");
 
     return (
-        <Navbar bg="white" className="shadow-sm custom-header" style={{ marginBottom: 20 }}>
-            <Container fluid className="d-flex align-items-center">
-                {/* Sidebar Toggle Button for Small Screens */}
-                <Button variant="outline-primary" className="d-md-none me-2" onClick={toggleSidebar}>
-                    <FaBars size={20} />
+        <header className="admin-header">
+            <div className="admin-header-title-wrap">
+                <Button
+                    variant="light"
+                    className="admin-mobile-menu d-md-none"
+                    onClick={toggleSidebar}
+                    aria-label="Open navigation menu"
+                >
+                    <FaBars aria-hidden="true" />
                 </Button>
-
-                {/* Header Title */}
-                <div className="header-title flex-grow-1">{title}</div>
-
-                {/* Notification and Profile Section */}
-                <div className="header-icons d-flex align-items-center gap-3">
-                    <FaBell className="notification-icon" size={20} />
-                    <a href="/MyProfile">
-                        <img
-                            src={user?.profile_picture ? `https://api.motospar.com${user?.profile_picture}` : require('../../assets/images/defaultprofile.webp')}
-                            alt="Profile"
-                            className="profile-image"
-                            style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: "50%",
-                                objectFit: "cover",
-                            }}
-                        />
-                    </a>
+                <div>
+                    <span className="admin-header-eyebrow">MotoSpar operations</span>
+                    <h1>{title}</h1>
                 </div>
-            </Container>
-        </Navbar>
+            </div>
+
+            <div className="admin-header-actions">
+                <button type="button" className="admin-notification-button" aria-label="Notifications">
+                    <FaRegBell aria-hidden="true" />
+                    <span className="admin-notification-dot" aria-hidden="true" />
+                </button>
+
+                <NavLink to="/MyProfile" className="admin-profile-link" aria-label="Open profile">
+                    <img src={profileImage} alt="" className="admin-profile-image" />
+                    <span className="admin-profile-copy">
+                        <strong>{displayName}</strong>
+                        <small>Administrator</small>
+                    </span>
+                </NavLink>
+            </div>
+        </header>
     );
 };
 

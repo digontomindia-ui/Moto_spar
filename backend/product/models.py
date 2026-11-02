@@ -9,8 +9,8 @@ from django.db import models
 from django.utils.translation import gettext as _
 from django.core.exceptions import ValidationError
 
-# Local and Other module imports
 from app.models import User
+from .storage import get_product_image_storage
 
 
 # Create your models here.
@@ -381,8 +381,8 @@ class ProductImage(models.Model):
     # -------------------------------      
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='images')  # variant-specific image
-    # image = models.ImageField(upload_to='product_images/')
     image = models.CharField(max_length=512, blank=True, null=True)
+    image_file = models.ImageField(upload_to='product_images/', storage=get_product_image_storage, blank=True, null=True)
     caption = models.CharField(max_length=255, blank=True)  # Optional field for caption
 
     # -------------------------------
@@ -397,6 +397,24 @@ class ProductImage(models.Model):
     # -------------------------------
     def __str__(self):
         return f"Image for {self.variant.product.name}"
+
+    def get_image_url(self, request=None):
+        from .storage import resolve_image_url
+        return resolve_image_url(self.image_file, self.image, request=request)
+
+    def safe_delete_storage_file(self):
+        """
+        Delete underlying storage object only if no other ProductImage record references it.
+        """
+        if self.image_file:
+            file_name = self.image_file.name
+            if file_name:
+                has_other_references = ProductImage.objects.exclude(id=self.id).filter(image_file=file_name).exists()
+                if not has_other_references:
+                    try:
+                        self.image_file.delete(save=False)
+                    except Exception:
+                        pass
     
     # * For soft delete
     def soft_delete(self, *args, **kwargs):
@@ -405,6 +423,11 @@ class ProductImage(models.Model):
     
     # * For Hard delete
     def hard_delete(self, *args, **kwargs):
+        self.safe_delete_storage_file()
+        super().delete(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self.safe_delete_storage_file()
         super().delete(*args, **kwargs)
 # ***** =====  END  ===== *****
 
@@ -493,8 +516,13 @@ class ProductRequestImage(models.Model):
     # Primary Identification
     # -------------------------------     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    productrequest = models.ForeignKey(ProductRequest, on_delete=models.CASCADE, related_name='images')  # variant-specific image
-    image = models.ImageField(upload_to='product_request_images/')
+    productrequest = models.ForeignKey(ProductRequest, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(
+        upload_to='product_request_images/',
+        storage=get_product_image_storage,
+        blank=True,
+        null=True,
+    )
 
     # -------------------------------
     # Default Fields
@@ -508,6 +536,25 @@ class ProductRequestImage(models.Model):
     # -------------------------------
     def __str__(self):
         return f"Image for {self.productrequest.name}"
+
+    def get_image_url(self, request=None):
+        from .storage import resolve_image_url
+        return resolve_image_url(self.image, None, request=request)
+
+    def safe_delete_storage_file(self):
+        """
+        Delete underlying storage object only if no other ProductRequestImage
+        record references it.
+        """
+        if self.image:
+            file_name = self.image.name
+            if file_name:
+                has_other_references = ProductRequestImage.objects.exclude(id=self.id).filter(image=file_name).exists()
+                if not has_other_references:
+                    try:
+                        self.image.delete(save=False)
+                    except Exception:
+                        pass
     
     # * For soft delete
     def soft_delete(self, *args, **kwargs):
@@ -516,5 +563,10 @@ class ProductRequestImage(models.Model):
     
     # * For Hard delete
     def hard_delete(self, *args, **kwargs):
+        self.safe_delete_storage_file()
+        super().delete(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self.safe_delete_storage_file()
         super().delete(*args, **kwargs)
 # ***** =====  END  ===== *****

@@ -1,522 +1,253 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { Alert, Badge, Button, Card, Form, Offcanvas } from "react-bootstrap";
+import { FaArrowLeft, FaEnvelope, FaMapMarkerAlt, FaPhoneAlt, FaSave, FaTruck, FaUserCog, FaWarehouse } from "react-icons/fa";
+import { useLocation, useNavigate } from "react-router-dom";
+import DeleteConfirmationModal from "../../../components/Atoms/DeleteModal";
 import Sidebar from "../../../components/Atoms/Sidebar";
 import Header from "../../../components/HOC/Header";
 import { VendorContext } from "../../../context/VendorContext";
-import {
-  Card,
-  Button,
-  Image,
-  Col,
-  Form,
-  Row,
-  Offcanvas,
-} from "react-bootstrap";
-import {
-  FaPhoneAlt,
-  FaEnvelope,
-  FaGlobe,
-  FaMapMarkerAlt,
-  FaMoneyBillWave,
-  FaFileInvoice,
-} from "react-icons/fa";
-import dayjs from "dayjs";
-import { useLocation, useNavigate } from "react-router-dom";
-import ToastComponent from "../../../components/HOC/Toast";
+import { getOrderStatus, ORDER_STATUS_OPTIONS } from "../../../utils/orderStatus";
+import "../../../assets/Css/OrderManagement.css";
+
+const currency = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+});
+
+const TIMELINE = ["ADMIN_REVIEW", "ASSIGNED_TO_VENDOR", "VENDOR_ACCEPTED", "WORK_COMPLETED", "DELIVERED"];
+const TIMELINE_ALIASES = { PENDING: 0, DRIVER_FOR_PICK: 2, DRIVER_FOR_DROP: 3 };
+
+const getInitialForm = (item, order) => ({
+    orderStatus: item?.order_status || "ADMIN_REVIEW",
+    vendorPaymentStatus: Boolean(item?.vendor_payment_status),
+    customerPaymentStatus: item?.payment_status || order?.payment_status || "PENDING",
+    driverUrl: item?.driver_for_me_url || order?.driver_for_me_url || "",
+});
+
+const addressText = (address) => {
+    if (!address) return "No shipping address available";
+    return [address.street_address, address.city, address.state, address.postal_code, address.country]
+        .filter(Boolean)
+        .join(", ");
+};
+
 const OrderDetail = () => {
-  const { updateProductStatus, toastMessage } = useContext(VendorContext);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const orderDetail = location.state?.orderDetail;
-  const itemdetail = location.state?.itemdetail;
+    const { updateProductStatus, loadingactivity } = useContext(VendorContext);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const orderDetail = location.state?.orderDetail;
+    const initialItem = location.state?.itemdetail;
+    const items = useMemo(() => orderDetail?.order_items || [], [orderDetail]);
 
-  const [ShowToast, setShowToast] = useState(false);
-  const [currentStatus, setcurrentStatus] = useState(itemdetail?.order_status);
-  const [vendor_payment_status, setvendor_payment_status] = useState(
-    itemdetail?.vendor_payment_status == true ? "True" : "False",
-  );
-  const [customer_payment_status, setcustomer_payment_status] = useState(
-    orderDetail?.payment_status,
-  );
-  const [driver_for_me_url, setdriver_for_me_url] = useState(
-    itemdetail?.driver_for_me_url ? itemdetail?.driver_for_me_url : "",
-  );
-  const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
-
-  const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
-  const handleUpdateStatus = (value) => {
-    setcurrentStatus(value);
-    updateProductStatus(
-      itemdetail?.id,
-      value,
-      driver_for_me_url,
-      vendor_payment_status,
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [selectedItemId, setSelectedItemId] = useState(initialItem?.id || items[0]?.id || "");
+    const selectedItem = useMemo(
+        () => items.find((item) => item.id === selectedItemId) || initialItem || items[0],
+        [items, selectedItemId, initialItem]
     );
-    setShowToast(true);
+    const [form, setForm] = useState(() => getInitialForm(selectedItem, orderDetail));
+    const [savedForm, setSavedForm] = useState(() => getInitialForm(selectedItem, orderDetail));
+    const [showConfirmation, setShowConfirmation] = useState(false);
+    const [saveError, setSaveError] = useState("");
 
-    setTimeout(() => {
-      setShowToast(false);
-    }, 5000); //
-  };
-  const handleUpdateVendorPaymentStatus = (value) => {
-    setvendor_payment_status(value);
-    updateProductStatus(
-      itemdetail?.id,
-      currentStatus,
-      driver_for_me_url,
-      value,
-    );
-    setShowToast(true);
+    useEffect(() => {
+        const next = getInitialForm(selectedItem, orderDetail);
+        setForm(next);
+        setSavedForm(next);
+        setSaveError("");
+        setShowConfirmation(false);
+    }, [selectedItem, orderDetail]);
 
-    setTimeout(() => {
-      setShowToast(false);
-    }, 5000); //
-  };
-   const handleUpdateCustomerPaymentStatus = (value) => {
-    setcustomer_payment_status(value);
-    updateProductStatus(
-      itemdetail?.id,
-      currentStatus,
-      driver_for_me_url,
-      vendor_payment_status,
-      value,
-    );
-    setShowToast(true);
+    const isDirty = JSON.stringify(form) !== JSON.stringify(savedForm);
+    const status = getOrderStatus(form.orderStatus);
+    const directTimelineIndex = TIMELINE.indexOf(form.orderStatus);
+    const currentTimelineIndex = directTimelineIndex >= 0 ? directTimelineIndex : (TIMELINE_ALIASES[form.orderStatus] ?? -1);
 
-    setTimeout(() => {
-      setShowToast(false);
-    }, 5000); //
-  };
-  console.log("orderDetail", itemdetail);
-  return (
-    <div className="d-flex">
-      <div className="d-none d-md-block">
-        <Sidebar /> {/* Sidebar visible on large screens */}
-      </div>
+    const updateField = (field, value) => {
+        setForm((current) => ({ ...current, [field]: value }));
+        setSaveError("");
+    };
 
-      {/* Offcanvas Sidebar for small screens */}
-      <Offcanvas
-        show={showSidebar}
-        onHide={toggleSidebar}
-        style={{ width: "100vh", backgroundColor: "#262D34", color: "white" }} // Custom color for the background
-      >
-        <Offcanvas.Header closeButton>
-          <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-        </Offcanvas.Header>
-        <Offcanvas.Body>
-          <Sidebar />
-        </Offcanvas.Body>
-      </Offcanvas>
-      <div style={{ flex: 1 }}>
-        <Header title={"Order Management"} toggleSidebar={toggleSidebar} />
+    const saveChanges = async () => {
+        if (!selectedItem?.id || loadingactivity) return;
+        const result = await updateProductStatus(
+            selectedItem.id,
+            form.orderStatus,
+            form.driverUrl.trim(),
+            form.vendorPaymentStatus,
+            form.customerPaymentStatus
+        );
+        if (result?.success) {
+            setSavedForm(form);
+            setShowConfirmation(false);
+        } else {
+            setSaveError(result?.message || "The order item could not be updated.");
+            setShowConfirmation(false);
+        }
+    };
 
-        <div className="row align-items-center m-4">
-          {/* Product Name and Order Code */}
-          <div className="col-12 col-md-6 mb-3 mb-md-0">
-            <h4>
-              {itemdetail?.product?.name} ({orderDetail?.order_code})
-            </h4>
-          </div>
+    if (!orderDetail || !selectedItem) {
+        return (
+            <div className="order-missing-state">
+                <FaUserCog />
+                <h2>Order details are unavailable</h2>
+                <p>Open an order from the order list so the correct item context is available.</p>
+                <Button className="savebtn" onClick={() => navigate("/orderList")}>Back to orders</Button>
+            </div>
+        );
+    }
 
-          {/* Buttons */}
-          <div className="col-12 col-md-6 text-md-end text-center">
-            {itemdetail?.order_status === "ASSIGNED_TO_VENDOR" ? null : (
-              <Button
-                className="savebtn mb-0 mb-md-0"
-                onClick={() => {
-                  navigate("/nearestVendorList", {
-                    state: {
-                      itemId: itemdetail?.id,
-                      itemName: itemdetail?.product?.name,
-                    },
-                  });
-                }}
-              >
-                Assign Vendor
-              </Button>
-            )}
-            {orderDetail?.driver_fees ==
-            "0.00" ? null : orderDetail?.driver_otp == "" ? (
-              <Button
-                className="savebtn ms-2 ms-md-3"
-                onClick={() => {
-                  navigate("/driverList", {
-                    state: {
-                      orderId: orderDetail?.id,
-                      Assign: true,
-                    },
-                  });
-                }}
-              >
-                Assign Driver
-              </Button>
-            ) : (
-              <Button
-                className="savebtn ms-2 ms-md-3"
-                onClick={() => {
-                  navigate("/driverList", {
-                    state: {
-                      orderId: orderDetail?.id,
-                      Assign: true,
-                    },
-                  });
-                }}
-                disabled
-                style={{
-                  backgroundColor: "gray",
-                  borderColor: "gray",
-                  color: "white",
-                }}
-              >
-                Assign Driver
-              </Button>
-            )}
-            {itemdetail?.mechanic_fees_for_customer == "0.00" ||
-            itemdetail?.mechanic !== null ? null : (
-              <Button
-                className="savebtn ms-2 ms-md-3"
-                onClick={() => {
-                  navigate("/nearestMechanic", {
-                    state: {
-                      item: itemdetail,
-                      Assign: true,
-                    },
-                  });
-                }}
-              >
-                Assign Mechanic
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="d-flex flex-wrap p-4">
-          <div className="mt-0">
-            <Card
-              className=" shadow-sm"
-              style={{ Width: "auto", margin: "auto" }}
-            >
-              <h5 className="subHeading">Customer Details</h5>
-              <hr className="divider " />
-              <div className="d-flex justify-content-center mt-3  ">
-                <Image
-                  src={
-                    orderDetail?.customer_details?.profile_picture
-                      ? orderDetail?.customer_details?.profile_picture
-                      : require("../../../assets/images/defaultprofile.webp")
-                  }
-                  roundedCircle
-                  style={{
-                    width: "100px",
-                    height: "100px",
-                    display: "block",
-                    margin: "auto",
-                    objectFit: "cover",
-                  }}
-                />
-              </div>
-              <Card.Body className="text-center">
-                <Card.Title className=" mb-1">
-                  <h5>{orderDetail?.customer_details?.full_name}</h5>
-                </Card.Title>
-                <Card.Text
-                  className="text-muted mb-4"
-                  style={{ fontSize: "0.9rem" }}
-                >
-                  User ID: {orderDetail?.customer_details?.id}
-                </Card.Text>
+    const customer = orderDetail.customer_details || {};
+    const isCashOnDelivery = orderDetail.payment_method === "CASH_ON_DELIVERY";
+    const confirmIsRisky = form.orderStatus === "CANCELLED" || form.orderStatus === "DELIVERED";
 
-                <Card.Text className="d-flex align-items-center ">
-                  <FaPhoneAlt className="me-2 " />{" "}
-                  <Card.Text
-                    className="text-muted "
-                    style={{ fontSize: "0.9rem" }}
-                  >
-                    {orderDetail?.customer_details?.phone_number
-                      ? orderDetail?.customer_details?.phone_number
-                      : "N/A"}
-                  </Card.Text>
-                </Card.Text>
-                <Card.Text className="d-flex align-items-center">
-                  <FaEnvelope className="me-2" />{" "}
-                  <Card.Text
-                    className="text-muted "
-                    style={{ fontSize: "0.9rem" }}
-                  >
-                    {orderDetail?.customer_details?.email
-                      ? orderDetail?.customer_details?.email
-                      : "N/A"}
-                  </Card.Text>
-                </Card.Text>
-                <Card.Text className="d-flex align-items-center">
-                  <FaMapMarkerAlt className="me-2" />{" "}
-                  <Card.Text
-                    className="text-muted "
-                    style={{ fontSize: "0.9rem" }}
-                  >
-                    {orderDetail?.shipping_address_details
-                      ? `${orderDetail?.shipping_address_details?.street_address}, ${orderDetail?.shipping_address_details?.city}, ${orderDetail?.shipping_address_details?.state}, ${orderDetail?.shipping_address_details?.postal_code}`
-                      : "N/A"}
-                  </Card.Text>
-                </Card.Text>
-              </Card.Body>
-              <hr className="divider " />
-              <h5 className="m-3">Payment Details</h5>
-              <Card.Body>
-                <Card.Text className="d-flex align-items-center ">
-                  <FaMoneyBillWave className="me-2" />{" "}
-                  <Card.Text
-                    className="text-muted "
-                    style={{ fontSize: "0.9rem" }}
-                  >
-                    {orderDetail?.payment_method == "CASH_ON_DELIVERY"
-                      ? "Cash On Delivery"
-                      : "Online Payment"}
-                  </Card.Text>
-                </Card.Text>
-              </Card.Body>
-              <hr className="divider " />
-              <h5 className="m-3">Order Summary</h5>
-              <Card.Body>
-                <Card.Text className="d-flex align-items-center justify-content-between ">
-                  <div>
-                    <Card.Text
-                      className="text-muted "
-                      style={{ fontSize: "0.9rem" }}
-                    >
-                      Delivery Charge
-                    </Card.Text>
-                    <Card.Text
-                      className="text-muted "
-                      style={{ fontSize: "0.9rem" }}
-                    >
-                      Total of ({orderDetail?.order_items.length}{" "}
-                      {orderDetail?.order_items.length > 1 ? "items" : "item"})
-                    </Card.Text>
-                  </div>
-                  <div>
-                    <Card.Text
-                      className="text-muted "
-                      style={{ fontSize: "0.9rem" }}
-                    >
-                      {itemdetail?.product?.delivery_charge}
-                    </Card.Text>
-                    <Card.Text
-                      className="text-muted "
-                      style={{ fontSize: "0.9rem" }}
-                    >
-                      {orderDetail?.total_price}
-                    </Card.Text>
-                  </div>
-                </Card.Text>
-              </Card.Body>
-            </Card>
-          </div>
-          <div style={{ flex: 1, height: "auto" }}>
-            <Card className="shadow-sm rounded ms-5">
-              <h5 className="subHeading">Order Action</h5>
-              <hr className="divider " />
-              <Card.Body>
-                <div className="d-flex align-items-center justify-content-between ">
-                  <div>
-                    <Card.Text
-                      className="text mb-1"
-                      style={{ fontSize: "1rem" }}
-                    >
-                      #{orderDetail?.order_code}
-                    </Card.Text>
-                    <Card.Text
-                      className="text-muted mb-1"
-                      style={{ fontSize: "0.8rem" }}
-                    >
-                      {dayjs(orderDetail?.created_at).format(
-                        "MMMM D, YYYY [at] h:mm A",
-                      )}
-                    </Card.Text>
-                  </div>
-                  {/* <div className="d-flex align-items-center">
-                    <FaFileInvoice className="me-2" />{" "}
-                    <a href="#" className="nav-link text-muted fs-8">
-                      Invoice
-                    </a>
-                  </div> */}
-                </div>
-                <Row className="align-items-center mt-3">
-                  <Col md={orderDetail?.payment_method == "CASH_ON_DELIVERY" ? 4 : 6}>
-                    <Form.Group controlId="stockStatus">
-                      <Form.Label className="pt-3">Current Status</Form.Label>
-                      <Form.Select
-                        value={currentStatus} // Bind the value to the state
-                        onChange={(e) => {
-                          handleUpdateStatus(e.target.value);
-                        }}
-                      >
-                        <option value="ADMIN_REVIEW">ADMIN_REVIEW</option>
-                        <option value="PENDING">PENDING</option>
-                        <option value="ASSIGNED_TO_VENDOR">
-                          ASSIGNED_TO_VENDOR
-                        </option>
-                         <option value="DRIVER_FOR_PICK">
-                          DRIVER ASSIGNED FOR PICKUP
-                        </option>
-                        <option value="VENDOR_ACCEPTED">VENDOR_ACCEPTED</option>
-                         <option value="WORK_COMPLETED">
-                          WORK COMPLETED
-                        </option>
-                         <option value="DRIVER_FOR_DROP">
-                          DRIVER ASSIGNED FOR DROP
-                        </option>
-                        <option value="DELIVERED">DELIVERED</option>
-                        <option value="CANCELLED">CANCELLED</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                  <Col md={orderDetail?.payment_method == "CASH_ON_DELIVERY" ? 4 : 6}>
-                    <Form.Group controlId="stockStatus">
-                      <Form.Label className="pt-3">
-                        Vendor Payment Status
-                      </Form.Label>
-                      <Form.Select
-                        value={vendor_payment_status} // Bind the value to the state
-                        onChange={(e) => {
-                          handleUpdateVendorPaymentStatus(e.target.value);
-                        }}
-                      >
-                        <option value="False">PENDING</option>
-                        <option value="True">PAID</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                  {orderDetail?.payment_method == "CASH_ON_DELIVERY" && (
-                    <Col md={4}>
-                      <Form.Group controlId="stockStatus">
-                        <Form.Label className="pt-3">
-                          Customer Payment Status
-                        </Form.Label>
-                        <Form.Select
-                          value={customer_payment_status} // Bind the value to the state
-                          onChange={(e) => {
-                            handleUpdateCustomerPaymentStatus(e.target.value);
-                          }}
-                        >
-                          <option value="PENDING">PENDING</option>
-                          <option value="SUCCESS">SUCCESS</option>
-                          <option value="FAILED">FAILED</option>
-                        </Form.Select>
-                      </Form.Group>
-                    </Col>
-                  )}
-                </Row>
-               
-                 <div>
-                  <Row className="align-items-center">
-                    <Col md={8}>
-                      <Form.Group controlId="url">
-                        <Form.Label className="pt-3">
-                          Driver For Me URL
-                        </Form.Label>
-                        <Form.Control
-                          type="text"
-                          placeholder="Driver For Me URL"
-                          value={driver_for_me_url}
-                          onChange={(e) => setdriver_for_me_url(e.target.value)}
-                        ></Form.Control>
-                      </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                      <Button
-                        variant="outline-success"
-                        style={{ marginTop: 50 }}
-                        onClick={async() => {
+    return (
+        <div className="d-flex order-management-shell">
+            <div className="d-none d-md-block"><Sidebar /></div>
+            <Offcanvas show={showSidebar} onHide={() => setShowSidebar(false)} className="bg-dark text-white">
+                <Offcanvas.Header closeButton closeVariant="white"><Offcanvas.Title>Menu</Offcanvas.Title></Offcanvas.Header>
+                <Offcanvas.Body className="p-0"><Sidebar /></Offcanvas.Body>
+            </Offcanvas>
 
-                        await  updateProductStatus(
-                            itemdetail?.id,
-                            currentStatus,
-                            driver_for_me_url,
-                            vendor_payment_status,
-                            customer_payment_status,
-                          );
-                          setShowToast(true);
+            <main className="order-management-main">
+                <Header title="Order Management" toggleSidebar={() => setShowSidebar((visible) => !visible)} />
+                <div className="order-management-page">
+                    <section className="order-detail-heading">
+                        <div>
+                            <button type="button" className="order-back-link" onClick={() => navigate("/orderList")}><FaArrowLeft />Back to orders</button>
+                            <div className="order-title-row"><h2>#{orderDetail.order_code}</h2><Badge bg={status.tone} pill>{status.label}</Badge></div>
+                            <p>Placed {dayjs(orderDetail.created_at).format("DD MMM YYYY [at] h:mm A")} · {items.length} {items.length === 1 ? "item" : "items"}</p>
+                        </div>
+                        <div className="order-assignment-actions">
+                            <Button variant="outline-primary" onClick={() => navigate("/nearestVendorList", { state: { itemId: selectedItem.id, itemName: selectedItem?.product?.name } })}><FaWarehouse />{selectedItem.assigned_vendor_details ? "Change vendor" : "Assign vendor"}</Button>
+                            {Number(orderDetail.driver_fees || 0) > 0 ? <Button variant="outline-primary" onClick={() => navigate("/driverList", { state: { orderId: orderDetail.id, Assign: true } })} disabled={Boolean(orderDetail.driver_details_data)}><FaTruck />{orderDetail.driver_details_data ? "Driver assigned" : "Assign driver"}</Button> : null}
+                            {Number(selectedItem.mechanic_fees_for_customer || 0) > 0 ? <Button variant="outline-primary" onClick={() => navigate("/nearestMechanic", { state: { item: selectedItem, Assign: true } })} disabled={Boolean(selectedItem.mechanic)}><FaUserCog />{selectedItem.mechanic ? "Mechanic assigned" : "Assign mechanic"}</Button> : null}
+                        </div>
+                    </section>
 
-                          setTimeout(() => {
-                            setShowToast(false);
-                          }, 5000);
-                        }}
-                      >
-                        Update
-                      </Button>
-                    </Col>
-                  </Row>
-                </div>
-              
-                {/* <div className="d-flex align-items-center mt-3">
-                  <Button variant="outline-warning" className="me-3">
-                    Refund
-                  </Button>
-                  <Button variant="outline-warning" className="me-3">
-                    Cancel Order
-                  </Button>
-                </div> */}
-                <div>
-                  {orderDetail?.driver_otp == "" ? null : (
-                    <Card.Text
-                      className="text mt-2"
-                      style={{ fontSize: "1rem" }}
-                    >
-                      OTP for Driver : {orderDetail?.driver_otp}
-                    </Card.Text>
-                  )}
-                </div>
-              </Card.Body>
-            </Card>
-          </div>
-          {/* <Card className="shadow-sm rounded m-4" style={{flex: 1}}>
-                        <h5 className="subHeading p-3">Basic Details</h5>
-                        <hr className="divider " />
+                    {saveError ? <Alert variant="danger" className="order-alert">{saveError}</Alert> : null}
+
+                    <Card className="order-timeline-card">
                         <Card.Body>
-                            <Form>
-                                <Form.Group controlId="formName">
-                                    <Form.Label>Address</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        value={userDetail?.address ? userDetail?.address : "N/A"}
-                                    />
-                                </Form.Group>
-
-                                <Row className="mt-3">
-                                    <Col md={4}>
-                                        <Form.Group controlId="formName">
-                                            <Form.Label>State</Form.Label>
-                                            <Form.Control
-                                                type="text"
-                                                value={userDetail?.state ? userDetail?.state : "N/A"}
-                                            />
-                                        </Form.Group>
-                                    </Col>
-                                    <Col md={4}>
-                                        <Form.Group controlId="formName">
-                                            <Form.Label>City</Form.Label>
-                                            <Form.Control
-                                                type="text"
-                                                value={userDetail?.city ? userDetail?.city : "N/A"}
-                                            />
-                                        </Form.Group>
-                                    </Col>
-                                    <Col md={4}>
-                                        <Form.Group controlId="formName">
-                                            <Form.Label>Pincode</Form.Label>
-                                            <Form.Control
-                                                type="text"
-                                                value={userDetail?.postal_code ? userDetail?.postal_code : "N/A"}
-                                            />
-                                        </Form.Group>
-                                    </Col>
-                                </Row>
-                            </Form>
+                            <div className={`order-status-timeline ${form.orderStatus === "CANCELLED" ? "cancelled" : ""}`}>
+                                {form.orderStatus === "CANCELLED" ? (
+                                    <div className="order-timeline-cancelled"><span /><strong>Order item cancelled</strong></div>
+                                ) : TIMELINE.map((value, index) => {
+                                    const timelineStatus = getOrderStatus(value);
+                                    const active = currentTimelineIndex >= index || form.orderStatus === value;
+                                    return <div key={value} className={active ? "active" : ""}><span>{index + 1}</span><strong>{timelineStatus.label}</strong></div>;
+                                })}
+                            </div>
                         </Card.Body>
-                    </Card> */}
+                    </Card>
+
+                    <div className="order-detail-grid">
+                        <div className="order-detail-side">
+                            <Card className="order-detail-card">
+                                <Card.Body>
+                                    <span className="order-eyebrow">Customer</span>
+                                    <h3>{customer.full_name || "Unknown customer"}</h3>
+                                    <div className="order-contact-list">
+                                        <span><FaPhoneAlt />{customer.phone_number || "No phone number"}</span>
+                                        <span><FaEnvelope />{customer.email || "No email address"}</span>
+                                        <span><FaMapMarkerAlt />{addressText(orderDetail.shipping_address_details)}</span>
+                                    </div>
+                                </Card.Body>
+                            </Card>
+
+                            <Card className="order-detail-card">
+                                <Card.Body>
+                                    <span className="order-eyebrow">Order summary</span>
+                                    <div className="order-summary-list">
+                                        <div><span>Items</span><strong>{items.length}</strong></div>
+                                        <div><span>Delivery charge</span><strong>{currency.format(Number(orderDetail.delivery_charge) || 0)}</strong></div>
+                                        <div><span>Driver fee</span><strong>{currency.format(Number(orderDetail.driver_fees) || 0)}</strong></div>
+                                        <div className="total"><span>Order total</span><strong>{currency.format(Number(orderDetail.total_price) || 0)}</strong></div>
+                                    </div>
+                                    <div className="order-reference-list">
+                                        <span>Payment method <strong>{isCashOnDelivery ? "Cash on delivery" : "Online payment"}</strong></span>
+                                        {orderDetail.payment_id ? <span>Payment ID <strong>{orderDetail.payment_id}</strong></span> : null}
+                                        {orderDetail.driver_otp ? <span>Driver OTP <strong>{orderDetail.driver_otp}</strong></span> : null}
+                                    </div>
+                                </Card.Body>
+                            </Card>
+                        </div>
+
+                        <div className="order-detail-content">
+                            <Card className="order-detail-card">
+                                <Card.Header className="order-item-picker">
+                                    <div><span className="order-eyebrow">Fulfilment item</span><h3>{selectedItem?.product?.name || "Order item"}</h3></div>
+                                    {items.length > 1 ? (
+                                        <Form.Select value={selectedItemId} onChange={(event) => setSelectedItemId(event.target.value)} aria-label="Select order item">
+                                            {items.map((item, index) => <option key={item.id} value={item.id}>{index + 1}. {item?.product?.name || item.id}</option>)}
+                                        </Form.Select>
+                                    ) : null}
+                                </Card.Header>
+                                <Card.Body>
+                                    <div className="order-item-facts">
+                                        <div><span>Quantity</span><strong>{selectedItem.quantity || 0}</strong></div>
+                                        <div><span>Unit price</span><strong>{currency.format(Number(selectedItem.price) || 0)}</strong></div>
+                                        <div><span>Vendor</span><strong>{selectedItem?.assigned_vendor_details?.full_name || "Not assigned"}</strong></div>
+                                        <div><span>Mechanic</span><strong>{selectedItem.mechanic ? "Assigned" : "Not required / unassigned"}</strong></div>
+                                    </div>
+
+                                    <hr />
+                                    <div className="order-control-heading"><div><h3>Update fulfilment</h3><p>Changes remain local until you review and save them.</p></div>{isDirty ? <Badge bg="warning" text="dark">Unsaved changes</Badge> : <Badge bg="success">Saved</Badge>}</div>
+
+                                    <div className="order-control-grid">
+                                        <Form.Group controlId="order-item-status">
+                                            <Form.Label>Order item status</Form.Label>
+                                            <Form.Select value={form.orderStatus} onChange={(event) => updateField("orderStatus", event.target.value)}>
+                                                {ORDER_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                            </Form.Select>
+                                        </Form.Group>
+                                        <Form.Group controlId="vendor-payment-status">
+                                            <Form.Label>Vendor payment</Form.Label>
+                                            <Form.Select value={String(form.vendorPaymentStatus)} onChange={(event) => updateField("vendorPaymentStatus", event.target.value === "true")}>
+                                                <option value="false">Pending</option>
+                                                <option value="true">Paid</option>
+                                            </Form.Select>
+                                        </Form.Group>
+                                        <Form.Group controlId="customer-payment-status">
+                                            <Form.Label>{isCashOnDelivery ? "Customer payment" : "Item payment"}</Form.Label>
+                                            <Form.Select value={form.customerPaymentStatus} onChange={(event) => updateField("customerPaymentStatus", event.target.value)}>
+                                                <option value="PENDING">Pending</option>
+                                                <option value="SUCCESS">Successful</option>
+                                                <option value="FAILED">Failed</option>
+                                            </Form.Select>
+                                        </Form.Group>
+                                        <Form.Group className="order-driver-url" controlId="driver-for-me-url">
+                                            <Form.Label>Driver tracking URL</Form.Label>
+                                            <Form.Control type="url" value={form.driverUrl} onChange={(event) => updateField("driverUrl", event.target.value)} placeholder="https://…" />
+                                            <Form.Text>Optional. Add only the current customer-safe tracking link.</Form.Text>
+                                        </Form.Group>
+                                    </div>
+
+                                    <div className="order-save-row">
+                                        {isDirty ? <Button variant="outline-secondary" onClick={() => setForm(savedForm)} disabled={loadingactivity}>Discard changes</Button> : null}
+                                        <Button className="savebtn" onClick={() => setShowConfirmation(true)} disabled={!isDirty || loadingactivity}><FaSave />Review and save</Button>
+                                    </div>
+                                </Card.Body>
+                            </Card>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <DeleteConfirmationModal
+                show={showConfirmation}
+                onCancel={() => !loadingactivity && setShowConfirmation(false)}
+                onDeleteConfirm={saveChanges}
+                title={confirmIsRisky ? `Confirm ${status.label.toLowerCase()} status` : "Save order changes?"}
+                message={confirmIsRisky ? `This will mark “${selectedItem?.product?.name}” as ${status.label.toLowerCase()}. Confirm that the operational work and payment details are correct.` : `Save the new fulfilment and payment values for “${selectedItem?.product?.name}”?`}
+                confirmLabel={loadingactivity ? "Saving…" : "Save changes"}
+                confirmVariant={confirmIsRisky ? "danger" : "primary"}
+                isLoading={loadingactivity}
+            />
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default OrderDetail;

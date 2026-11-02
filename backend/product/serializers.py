@@ -105,12 +105,27 @@ class SubCategorySerializer(serializers.ModelSerializer):
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    image_file = serializers.ImageField(required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ProductImage
-        fields = ['id', 'variant', 'image', 'caption', 
+        fields = ['id', 'variant', 'image', 'image_url', 'image_file', 'caption',
                     'created_at', 'last_modified_at', 'is_active']
         read_only_fields = ['id', 'created_at', 'last_modified_at', 'is_active']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request') if self.context else None
+        return obj.get_image_url(request=request)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request') if self.context else None
+        resolved = instance.get_image_url(request=request)
+        representation['image'] = resolved
+        representation['image_url'] = resolved
+        return representation
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -137,7 +152,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         Retrieve the images associated with the variant.
         """
         images = obj.images.filter(is_active=True)  # Filter active images
-        return ProductImageSerializer(images, many=True).data
+        return ProductImageSerializer(images, many=True, context=self.context).data
 
     def get_quantity_in_stock(self, obj):
         """
@@ -279,10 +294,26 @@ class ProductWithoutVariantSerializer(serializers.ModelSerializer):
 
 # ********** Product Request related serializers **********
 class ProductRequestImageSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = ProductRequestImage
-        fields = ['id', 'productrequest', 'image',
+        fields = ['id', 'productrequest', 'image', 'image_url',
                     'created_at', 'last_modified_at', 'is_active']
+        read_only_fields = ['id', 'created_at', 'last_modified_at', 'is_active']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request') if self.context else None
+        return obj.get_image_url(request=request)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request') if self.context else None
+        resolved = instance.get_image_url(request=request)
+        representation['image'] = resolved
+        representation['image_url'] = resolved
+        return representation
 
 
 class ProductRequestSerializer(serializers.ModelSerializer):

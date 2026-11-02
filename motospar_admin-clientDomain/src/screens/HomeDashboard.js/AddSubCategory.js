@@ -1,15 +1,21 @@
-import React, { useContext, useEffect, useState } from "react";
-import { Button, Card, Col, Form, Offcanvas, Row, Table } from "react-bootstrap";
-import Header from "../../components/HOC/Header";
-import Sidebar from "../../components/Atoms/Sidebar";
-import "../../assets/Css/ProductForm.css";
-import { AiOutlineSearch, AiFillEdit, AiFillDelete } from "react-icons/ai";
-import { FaEye } from "react-icons/fa";
-import ProductImageUpload from "../../components/Atoms/ProductImageUpload";
-import { VendorContext } from "../../context/VendorContext";
-import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
-import ToastComponent from "../../components/HOC/Toast";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Card, Form, Offcanvas, Spinner, Table } from "react-bootstrap";
+import { AiFillDelete, AiFillEdit, AiOutlineSearch } from "react-icons/ai";
+import { FaArrowLeft, FaArrowRight, FaImage, FaLayerGroup, FaPlus } from "react-icons/fa";
 import DeleteConfirmationModal from "../../components/Atoms/DeleteModal";
+import Sidebar from "../../components/Atoms/Sidebar";
+import Header from "../../components/HOC/Header";
+import { VendorContext } from "../../context/VendorContext";
+import { FALLBACK_IMAGE, resolveImageUrl } from "../../utils/imageUtils";
+import "../../assets/Css/ProductManagement.css";
+
+const emptyForm = {
+    categoryId: "",
+    name: "",
+    description: "",
+    image: "",
+};
+
 const AddSubCategory = () => {
     const {
         ProductCategory,
@@ -22,403 +28,272 @@ const AddSubCategory = () => {
         hasNext,
         pageCount,
         editSubCategory,
-        toastMessage,
         deleteCommon,
+        loadingactivity,
     } = useContext(VendorContext);
-    const [showToast, setShowToast] = useState(false);
+    const categoryRequestRef = useRef(ProductCategory);
+    const subcategoryRequestRef = useRef(getAllSubCategory);
+    categoryRequestRef.current = ProductCategory;
+    subcategoryRequestRef.current = getAllSubCategory;
+
+    const [showSidebar, setShowSidebar] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
-    const [categoryId, setcategoryId] = useState(null);
-    const [subCategoryName, setsubCategoryName] = useState("");
-    const [description, setdescription] = useState("");
-    const [image, setimage] = useState("");
-    const [categoryName, setcategoryName] = useState("");
-    const [isEdit, setisEdit] = useState(false);
-    const [previewImage, setPreviewImage] = useState("");
-    const [subCategoryId, setsubCategoryId] = useState("");
+    const [form, setForm] = useState(emptyForm);
+    const [editingId, setEditingId] = useState(null);
+    const [formError, setFormError] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const [subcategoryToDelete, setSubcategoryToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
-        ProductCategory();
+        categoryRequestRef.current();
     }, []);
+
     useEffect(() => {
-        getAllSubCategory(currentPage);
+        subcategoryRequestRef.current(currentPage);
     }, [currentPage]);
-    const handleImageChange = (e) => {
-        setimage(e.target.files[0]);
-        const file = e.target.files[0];
-        if (file) {
-            setimage(file); // Store the file object for backend usage
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPreviewImage(reader.result); // Set the Base64 string as the preview image
-            };
-            reader.readAsDataURL(file); // Convert file to Base64 URL
-        }
-    };
-    const handleSearch = (event) => {
-        setSearchTerm(event.target.value);
+
+    const filteredSubcategories = useMemo(() => {
+        const query = searchTerm.trim().toLowerCase();
+        if (!query) return productSubCategory || [];
+        return (productSubCategory || []).filter((subcategory) =>
+            [subcategory?.name, subcategory?.category?.name]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(query))
+        );
+    }, [productSubCategory, searchTerm]);
+
+    const resetForm = () => {
+        setForm(emptyForm);
+        setEditingId(null);
+        setFormError("");
     };
 
-    const filteredSubCategory = productSubCategory.filter((product, index) =>
-        product?.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    const handleNextPage = () => {
-        if (hasNext) {
-            setCurrentPage((prevPage) => prevPage + 1);
-        }
+    const updateField = (field, value) => {
+        setForm((current) => ({ ...current, [field]: value }));
+        setFormError("");
     };
 
-    const handlePreviousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage((prevPage) => prevPage - 1);
+    const saveSubcategory = async () => {
+        if (isSaving || loadingactivity) return;
+        if (!form.categoryId) {
+            setFormError("Choose the parent category.");
+            return;
         }
-    };
-    const [showModal, setShowModal] = useState(false);
-    const [deleteId, setDeleteId] = useState(null);
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
+        if (!form.name.trim()) {
+            setFormError("Enter a sub-category name.");
+            return;
+        }
+        if (form.image && !/^https?:\/\//i.test(form.image) && !form.image.startsWith("s3://")) {
+            setFormError("Enter a complete https:// or s3:// image URL, or leave the image blank.");
+            return;
+        }
 
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
-    const handleDeleteClick = (id) => {
-        setDeleteId(id);
-        setShowModal(true);
+        setIsSaving(true);
+        const result = editingId
+            ? await editSubCategory({
+                subCategoryId: editingId,
+                categoryId: form.categoryId,
+                subCategoryName: form.name.trim(),
+                description: form.description.trim(),
+                image: form.image.trim(),
+            })
+            : await addSubCategory(
+                form.categoryId,
+                form.name.trim(),
+                form.description.trim(),
+                form.image.trim()
+            );
+
+        if (result?.status === true) {
+            resetForm();
+            await subcategoryRequestRef.current(currentPage);
+        } else {
+            setFormError(result?.message || "The sub-category could not be saved.");
+        }
+        setIsSaving(false);
+    };
+
+    const beginEdit = (subcategory) => {
+        setEditingId(subcategory.id);
+        setForm({
+            categoryId: subcategory?.category?.id || "",
+            name: subcategory?.name || "",
+            description: subcategory?.description || "",
+            image: subcategory?.image || "",
+        });
+        setFormError("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const confirmDelete = async () => {
-        if (deleteId) {
-            const response = await deleteCommon(`admin/sub-categories/${deleteId}/delete`);
-            if (response.success) {
-                getAllSubCategory(currentPage); // Refresh table after deletion
-            } else {
-                console.error("Failed to delete sub-category");
-            }
-            setShowModal(false);
+        if (!subcategoryToDelete?.id || isDeleting) return;
+        setIsDeleting(true);
+        const result = await deleteCommon(`admin/sub-categories/${subcategoryToDelete.id}/delete`);
+        if (result?.status === true || result?.data?.status === "success") {
+            const moveBack = filteredSubcategories.length === 1 && currentPage > 1;
+            setSubcategoryToDelete(null);
+            if (moveBack) setCurrentPage((page) => page - 1);
+            else await subcategoryRequestRef.current(currentPage);
         }
+        setIsDeleting(false);
     };
-    console.log("images", image)
+
     return (
-        <div className="d-flex">
-            <div className="d-none d-md-block">
-                <Sidebar /> {/* Sidebar visible on large screens */}
-            </div>
-
-            {/* Offcanvas Sidebar for small screens */}
-            <Offcanvas
-                show={showSidebar}
-                onHide={toggleSidebar}
-                style={{ width: "100vh", backgroundColor: "#262D34", color: "white" }} // Custom color for the background
-            >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="text-white">Menu</Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar />
-                </Offcanvas.Body>
+        <div className="d-flex product-management-shell">
+            <div className="d-none d-md-block"><Sidebar /></div>
+            <Offcanvas show={showSidebar} onHide={() => setShowSidebar(false)} className="bg-dark text-white">
+                <Offcanvas.Header closeButton closeVariant="white"><Offcanvas.Title>Menu</Offcanvas.Title></Offcanvas.Header>
+                <Offcanvas.Body className="p-0"><Sidebar /></Offcanvas.Body>
             </Offcanvas>
-            <div style={{ flex: 1 }}>
-                <Header title={"Product Management"} toggleSidebar={toggleSidebar} />
-                <div className="d-flex justify-content-between align-items-center m-4">
-                    {isEdit ? <h4>Edit Sub-Category</h4> : <h4>Add Sub-Category</h4>}
-                    {isEdit ? (
+
+            <main className="product-management-main">
+                <Header title="Product Management" toggleSidebar={() => setShowSidebar((visible) => !visible)} />
+                <div className="product-management-page">
+                    <section className="product-management-heading">
                         <div>
-                            <Button
-                                variant="outline-warning"
-                                className="me-3"
-                                onClick={() => {
-                                    setisEdit(false);
-                                    setsubCategoryName("");
-                                    setimage("");
-                                    setdescription("");
-                                    setPreviewImage("");
-                                    setcategoryName("");
-                                }}
-                            >
-                                Discard
-                            </Button>
-                            <Button
-                                className="savebtn"
-                                onClick={async () => {
-                                    const updatedData = {
-                                        subCategoryId,
-                                        subCategoryName,
-                                        description,
-                                    };
-
-                                    // Only include the image if it has been updated
-                                    if (image) {
-                                        updatedData.image = image; // Add image only if it's updated
-                                    }
-
-                                    await editSubCategory(updatedData); // Wait for the update to complete
-                                    console.log("Data sent to API:", updatedData);
-
-                                    getAllSubCategory(currentPage); // Fetch updated data
-                                    setShowToast(true);
-                                    setTimeout(() => {
-                                        setShowToast(false);
-                                    }, 5000); //
-                                }}
-                            >
-                                Update
-                            </Button>
+                            <span className="product-management-eyebrow">Catalogue settings</span>
+                            <h2>Sub-categories</h2>
+                            <p>Organise products under consistent categories so search and CSV imports stay reliable.</p>
                         </div>
-                    ) : (
-                        <div>
-                            <Button variant="outline-warning" className="me-3">
-                                Save to Draft
-                            </Button>
-                            <Button
-                                className="savebtn"
-                                onClick={async() => {
-                                  const res = await addSubCategory(categoryId, subCategoryName, description, image);
-                                   if(res?.status){
-                                     setsubCategoryName("");
-                                    setimage("");
-                                    setdescription("");
-                                    setPreviewImage("");
-                                    setcategoryName("");
-                                    setShowToast(true);
-                                    setTimeout(() => {
-                                        setShowToast(false);
-                                    }, 5000); //
-                                    getAllSubCategory(currentPage);
-                                   }
-                                }}
-                            >
-                                Save
-                            </Button>
-                        </div>
-                    )}
-                </div>
-                <div className="container-fluid">
-                    <div className="row d-flex">
-                        <div className={`col-12 col-md-3 ${isEdit ? "" : "mb-3"}`}>
-                            <div className="m-md-4 m-2">
-                                <Card>
-                                    <h5 className="subHeading">Image</h5>
-                                    <hr className="divider" />
-                                    <Card.Img
-                                        className="p-2"
-                                        src={
-                                            previewImage
-                                                ? previewImage
-                                                : image
-                                                    ? image
-                                                    : require('../../assets/images/Logo.png')
-                                        }
-                                        alt="Product Image"
-                                        style={{
-                                            height: "auto",
-                                            objectFit: "cover",
-                                            borderRadius: "4px",
-                                            marginBottom: "10px",
-                                            maxWidth: "100%",
-                                        }}
+                        <Button className="savebtn" onClick={resetForm} disabled={!editingId}>
+                            <FaPlus className="me-2" />New sub-category
+                        </Button>
+                    </section>
+
+                    <div className="category-layout">
+                        <Card className="product-management-card category-form-card">
+                            <Card.Body>
+                                <span className="product-management-eyebrow">{editingId ? "Editing" : "Create"}</span>
+                                <h3>{editingId ? "Edit sub-category" : "Add sub-category"}</h3>
+                                <p className="text-muted">Names are normalised by the server to prevent accidental duplicates.</p>
+
+                                {formError ? <Alert variant="danger">{formError}</Alert> : null}
+
+                                <Form.Group className="mb-3" controlId="subcategory-category">
+                                    <Form.Label>Parent category <span className="text-danger">*</span></Form.Label>
+                                    <Form.Select value={form.categoryId} onChange={(event) => updateField("categoryId", event.target.value)}>
+                                        <option value="">Choose a category</option>
+                                        {(productCategory || []).map((category) => (
+                                            <option key={category.id} value={category.id}>{category.name}</option>
+                                        ))}
+                                    </Form.Select>
+                                </Form.Group>
+                                <Form.Group className="mb-3" controlId="subcategory-name">
+                                    <Form.Label>Name <span className="text-danger">*</span></Form.Label>
+                                    <Form.Control
+                                        value={form.name}
+                                        onChange={(event) => updateField("name", event.target.value)}
+                                        placeholder="e.g. Tail lights"
+                                        maxLength={255}
                                     />
-                                </Card>
-                            </div>
-                        </div>
-                        <div className="col-12 col-md-9">
-                            <Card className="shadow-sm rounded m-2 m-md-4">
-                                <h5 className="subHeading p-3">{isEdit ? "Edit Details" : "Add Details"}</h5>
-                                <hr className="divider" />
-                                <Card.Body>
-                                    <Form>
-                                        <Row className="mt-3">
-                                            <Col xs={12} md={6}>
-                                                <Form.Group controlId="productCategory">
-                                                    <Form.Label>Product Category</Form.Label>
-                                                    <Form.Select
-                                                        value={categoryName || ""}
-                                                        onChange={(e) => {
-                                                            const selectedId = e.target.value;
-                                                            setcategoryId(selectedId);
-                                                            const selectedCategory = productCategory.find(
-                                                                (data) => data.id === selectedId
-                                                            );
-                                                            setcategoryName(selectedCategory?.name || "");
-                                                        }}
-                                                    >
-                                                        <option value="" hidden>
-                                                            {categoryName || "Choose"}
-                                                        </option>
-                                                        {productCategory.map((data, index) => (
-                                                            <option key={data?.id || index} value={data?.id}>
-                                                                {data?.name}
-                                                            </option>
-                                                        ))}
-                                                    </Form.Select>
-                                                </Form.Group>
-                                            </Col>
-                                            <Col xs={12} md={6}>
-                                                <Form.Group controlId="formName">
-                                                    <Form.Label>Sub-Category</Form.Label>
-                                                    <Form.Control
-                                                        type="text"
-                                                        value={subCategoryName}
-                                                        onChange={(e) => setsubCategoryName(e.target.value)}
-                                                    />
-                                                </Form.Group>
-                                            </Col>
-                                        </Row>
-                                        <Form.Group controlId="formName" className="mt-3">
-                                            <Form.Label>Description</Form.Label>
-                                            <Form.Control
-                                                as="textarea"
-                                                rows={3}
-                                                type="text"
-                                                value={description}
-                                                onChange={(e) => setdescription(e.target.value)}
-                                            />
-                                        </Form.Group>
-                                        <Form.Group controlId="formName" className="mt-3">
-                                            <Form.Label>Add Image Url</Form.Label>
-                                            <Form.Control
+                                </Form.Group>
+                                <Form.Group className="mb-3" controlId="subcategory-description">
+                                    <Form.Label>Description</Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        rows={4}
+                                        value={form.description}
+                                        onChange={(event) => updateField("description", event.target.value)}
+                                        placeholder="Explain what belongs in this sub-category"
+                                    />
+                                </Form.Group>
+                                <Form.Group className="mb-3" controlId="subcategory-image">
+                                    <Form.Label>Image URL</Form.Label>
+                                    <Form.Control
+                                        type="url"
+                                        value={form.image}
+                                        onChange={(event) => updateField("image", event.target.value)}
+                                        placeholder="https://… or s3://…"
+                                    />
+                                    <Form.Text>Optional. Use a stable URL from approved media storage.</Form.Text>
+                                </Form.Group>
 
-                                                type="text"
-                                                placeholder="Enter image URL"
-                                                value={image}
-                                                onChange={(e) => setimage(e.target.value)}
-                                            ></Form.Control>
-                                        </Form.Group>
-                                        {
-                                            image &&
-                                            <div
+                                {form.image ? (
+                                    <div className="category-image-preview">
+                                        <img
+                                            src={resolveImageUrl(form.image)}
+                                            alt="Sub-category preview"
+                                            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_IMAGE; }}
+                                        />
+                                        <Button variant="light" size="sm" onClick={() => updateField("image", "")}>Remove image</Button>
+                                    </div>
+                                ) : null}
 
-                                                className="list-group-item d-flex justify-content-between align-items-center"
-                                            >
-                                                <div>
-                                                    <img
-                                                        src={image}
-                                                        alt="preview"
-                                                        style={{ width: "50px", height: "50px", objectFit: "cover", marginRight: "10px" }}
-                                                    />
-                                                    {image}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-danger btn-sm"
-                                                    onClick={() => setimage('')}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        }
-                                    </Form>
-                                </Card.Body>
-                            </Card>
-                        </div>
-                    </div>
-                    <div>
-                        <Card className="shadow-sm rounded custom-card m-2 m-md-4">
-                            <div className="p-2 p-md-4">
-                                <div className="d-flex flex-wrap justify-content-between align-items-center mb-3">
-                                    <div className="d-flex align-items-center gap-3 mb-2">
-                                        <h4>Sub-Categories</h4>
-                                        <div className="wrapper">
-                                            <AiOutlineSearch className="icon" />
-                                            <input
-                                                style={{ width: 500 }}
-                                                className="input"
-                                                type="text"
-                                                id="search"
-                                                placeholder="Search"
-                                                value={searchTerm}
-                                                onChange={handleSearch}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <span>
-                                            Page {currentPage} of {pageCount}
-                                        </span>
-                                        <FaArrowLeft
-                                            onClick={handlePreviousPage}
-                                            style={{
-                                                cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                                                opacity: currentPage === 1 ? 0.5 : 1,
-                                            }}
-                                        />
-                                        <FaArrowRight
-                                            onClick={handleNextPage}
-                                            style={{
-                                                cursor: !hasNext ? "not-allowed" : "pointer",
-                                                opacity: !hasNext ? 0.5 : 1,
-                                            }}
-                                        />
-                                    </div>
+                                <div className="product-management-actions mt-4">
+                                    {editingId ? <Button variant="outline-secondary" onClick={resetForm} disabled={isSaving}>Cancel</Button> : null}
+                                    <Button className="savebtn" onClick={saveSubcategory} disabled={isSaving || loadingactivity}>
+                                        {isSaving ? "Saving…" : editingId ? "Save changes" : "Create sub-category"}
+                                    </Button>
                                 </div>
-                                <div style={{ overflowX: "auto" }}>
-                                    <Table bordered hover responsive className="align-middle">
-                                        <thead>
-                                            <tr>
-                                                <th>ID</th>
-                                                <th>Sub-Category Name</th>
-                                                <th>Category</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredSubCategory.map((product, index) => (
-                                                <tr key={product?.id}>
-                                                    <td>{index + 1}</td>
-                                                    <td>
-                                                        {product?.image && (
-                                                            <img
-                                                                src={
-                                                                    product?.image
-                                                                        ? product?.image
-                                                                        : require('../../assets/images/Logo.png')
-                                                                }
-                                                                style={{ height: "5%", width: "5%" }}
-                                                            />
-                                                        )}
-                                                        {"   "} {product?.name}
-                                                    </td>
-                                                    <td>{product?.category?.name}</td>
-                                                    <td className="d-flex">
-                                                        <Button
-                                                            variant="outline-success"
-                                                            size="sm"
-                                                            className="me-2"
-                                                            title="Edit"
-                                                            onClick={() => {
-                                                                setisEdit(true);
-                                                                setsubCategoryName(product?.name);
-                                                                setimage(product?.image || "");
-                                                                setdescription(product?.description);
-                                                                setsubCategoryId(product?.id);
-                                                                setcategoryName(product?.category?.name);
-                                                                setPreviewImage("");
-                                                                window.scrollTo({ top: 0, behavior: "smooth" });
-                                                            }}
-                                                        >
-                                                            <AiFillEdit />
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline-danger"
-                                                            size="sm"
-                                                            title="Delete"
-                                                            onClick={() => handleDeleteClick(product?.id)}
-                                                        >
-                                                            <AiFillDelete />
-                                                        </Button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
+                            </Card.Body>
+                        </Card>
+
+                        <Card className="product-management-card category-list-card">
+                            <Card.Header className="category-list-toolbar">
+                                <div>
+                                    <h3>Catalogue structure</h3>
+                                    <span>Page {currentPage || 1} of {pageCount || 1}</span>
                                 </div>
-                            </div>
+                                <div className="product-search-field">
+                                    <AiOutlineSearch aria-hidden="true" />
+                                    <Form.Control
+                                        type="search"
+                                        value={searchTerm}
+                                        onChange={(event) => setSearchTerm(event.target.value)}
+                                        placeholder="Search this page"
+                                        aria-label="Search sub-categories"
+                                    />
+                                </div>
+                            </Card.Header>
+                            <Card.Body className="p-0">
+                                {loadingactivity && !(productSubCategory || []).length ? (
+                                    <div className="category-empty-state"><Spinner animation="border" /><strong>Loading sub-categories</strong></div>
+                                ) : filteredSubcategories.length ? (
+                                    <div className="table-responsive">
+                                        <Table hover className="category-table align-middle mb-0">
+                                            <thead><tr><th>Sub-category</th><th>Parent category</th><th className="text-end">Actions</th></tr></thead>
+                                            <tbody>
+                                                {filteredSubcategories.map((subcategory) => (
+                                                    <tr key={subcategory.id}>
+                                                        <td>
+                                                            <div className="category-name-cell">
+                                                                {subcategory.image ? <img src={resolveImageUrl(subcategory.image)} alt="" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_IMAGE; }} /> : <span><FaImage /></span>}
+                                                                <div><strong>{subcategory.name || "Untitled"}</strong><small>{subcategory.description || "No description"}</small></div>
+                                                            </div>
+                                                        </td>
+                                                        <td>{subcategory?.category?.name || "Unassigned"}</td>
+                                                        <td><div className="product-row-actions">
+                                                            <Button variant="outline-success" size="sm" aria-label={`Edit ${subcategory.name}`} onClick={() => beginEdit(subcategory)}><AiFillEdit /></Button>
+                                                            <Button variant="outline-danger" size="sm" aria-label={`Delete ${subcategory.name}`} onClick={() => setSubcategoryToDelete(subcategory)}><AiFillDelete /></Button>
+                                                        </div></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </Table>
+                                    </div>
+                                ) : (
+                                    <div className="category-empty-state"><FaLayerGroup /><strong>{searchTerm ? "No matching sub-categories" : "No sub-categories yet"}</strong><span>{searchTerm ? "Try another search term." : "Create the first one using the form."}</span></div>
+                                )}
+                            </Card.Body>
+                            <Card.Footer className="category-pagination">
+                                <Button variant="light" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1 || loadingactivity}><FaArrowLeft /> Previous</Button>
+                                <Button variant="light" onClick={() => setCurrentPage((page) => page + 1)} disabled={!hasNext || loadingactivity}>Next <FaArrowRight /></Button>
+                            </Card.Footer>
                         </Card>
                     </div>
                 </div>
+            </main>
 
-                <DeleteConfirmationModal
-                    show={showModal}
-                    onDeleteConfirm={confirmDelete}
-                    onCancel={() => setShowModal(false)}
-                    message={"This sub-Category will be deleted immediately. You can’t undo this action."}
-                />
-            </div>
+            <DeleteConfirmationModal
+                show={Boolean(subcategoryToDelete)}
+                onDeleteConfirm={confirmDelete}
+                onCancel={() => !isDeleting && setSubcategoryToDelete(null)}
+                title="Delete sub-category?"
+                confirmLabel={isDeleting ? "Deleting…" : "Delete sub-category"}
+                isLoading={isDeleting}
+                message={`“${subcategoryToDelete?.name || "This sub-category"}” will be permanently deleted. Products may prevent deletion while they still reference it.`}
+            />
         </div>
     );
 };

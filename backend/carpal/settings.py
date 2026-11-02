@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'shipping.apps.ShippingConfig',
     'vendor.apps.VendorConfig',
     'wishlist.apps.WishlistConfig',
+    'storages',
 ]
 
 
@@ -148,18 +149,21 @@ WSGI_APPLICATION = "carpal.wsgi.application"
 # }
 
 
-# ! FOR PRODUCTION
+# Database configuration
+_db_engine = config('DATABASE_ENGINE', default='django.db.backends.sqlite3')
+_db_options = {}
+if 'postgresql' in _db_engine:
+    _db_options['sslmode'] = config('DATABASE_SSLMODE', default='prefer')
+
 DATABASES = {
     'default': {
-        'ENGINE': config('DATABASE_ENGINE', default='django.db.backends.sqlite3'),
-        'NAME': config('DATABASE_NAME', default='db.sqlite3'),
+        'ENGINE': _db_engine,
+        'NAME': config('DATABASE_NAME', default=str(BASE_DIR / 'db.sqlite3')),
         'USER': config('DATABASE_USER', default=''),
         'PASSWORD': config('DATABASE_PASSWORD', default=''),
         'HOST': config('DATABASE_HOST', default=''),
         'PORT': config('DATABASE_PORT', default='5432'),
-        'OPTIONS': {
-            'sslmode': config('DATABASE_SSLMODE', default='prefer'),
-        },
+        'OPTIONS': _db_options,
     }
 }
 
@@ -207,6 +211,27 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'staticfiles'),] # For Development
 STATIC_ROOT = os.path.join(BASE_DIR, 'static') # For Deployment
+
+# Base API URL used to resolve relative media URLs in API responses
+API_BASE_URL = config('API_BASE_URL', default='https://api.motospar.com')
+
+# AWS S3 Storage Settings (for product image uploads)
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='ap-south-1')
+AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
+AWS_S3_ENDPOINT_URL = config('AWS_S3_ENDPOINT_URL', default='')
+AWS_QUERYSTRING_AUTH = config('AWS_QUERYSTRING_AUTH', default=True, cast=bool)
+AWS_QUERYSTRING_EXPIRE = config('AWS_QUERYSTRING_EXPIRE', default=3600, cast=int)
+AWS_DEFAULT_ACL = None
+AWS_S3_FILE_OVERWRITE = False
+
+# Limits for product image uploads
+MAX_PRODUCT_IMAGE_SIZE_MB = config('MAX_PRODUCT_IMAGE_SIZE_MB', default=10, cast=int)
+MAX_PRODUCT_IMAGES_PER_VARIANT = config('MAX_PRODUCT_IMAGES_PER_VARIANT', default=10, cast=int)
+ALLOWED_PRODUCT_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.gif')
+ALLOWED_PRODUCT_IMAGE_MIME_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/gif')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

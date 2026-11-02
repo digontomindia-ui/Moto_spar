@@ -64,6 +64,7 @@ const HomeNavigation = () => {
                 <Route path="/userList" element={<UserList />} />
                 <Route path="/vendorDetail" element={<VendorDetail />} />
                 <Route path="/userDetail" element={<UserDetail />} />
+                <Route path="/userDetail/:userId" element={<UserDetail />} />
                 <Route path="/orderDetail" element={<OrderDetail />} />
                 <Route path="/nearestVendorList" element={<NearestVendorlist />} />
                 <Route path="/productRequestList" element={<ProductRequestList />} />

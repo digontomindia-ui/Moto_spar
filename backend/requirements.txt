@@ -38,6 +38,8 @@ cssselect2==0.9.0
 
 defusedxml==0.7.1
 
+boto3==1.43.123
+
 Django==4.2
 
 django-allauth==0.50.0
@@ -45,6 +47,8 @@ django-allauth==0.50.0
 django-celery-beat==2.7.0
 
 django-cors-headers==4.4.0
+
+django-storages==1.14.6
 
 django-ipware==7.0.1
 

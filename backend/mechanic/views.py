@@ -158,6 +158,7 @@ def view_mechanic_users_admin_panel(request):
             country = data.get('country', '').strip()
             state = data.get('state', '').strip()
             postal_code = data.get('postal_code', '').strip()
+            search_query = data.get('search', '').strip()
 
             # Construct the Q object for complex filtering
             filters = Q(account_type='mechanic')  # Restrict to mechanic users
@@ -176,6 +177,18 @@ def view_mechanic_users_admin_panel(request):
 
             if postal_code:
                 filters &= Q(postal_code__icontains=postal_code)
+
+            if search_query:
+                filters &= (
+                    Q(first_name__icontains=search_query) |
+                    Q(last_name__icontains=search_query) |
+                    Q(email__icontains=search_query) |
+                    Q(phone_number__icontains=search_query) |
+                    Q(city__icontains=search_query) |
+                    Q(state__icontains=search_query) |
+                    Q(postal_code__icontains=search_query) |
+                    Q(country__icontains=search_query)
+                )
 
             # Retrieve and paginate mechanic users based on filters
             users = User.objects.filter(filters).order_by('date_joined')

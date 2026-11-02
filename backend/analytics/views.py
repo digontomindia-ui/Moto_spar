@@ -94,6 +94,7 @@ def view_users_admin_panel(request):
             state = request.data.get('state', '').strip()
             postal_code = request.data.get('postal_code', '').strip()
             account_type = request.data.get('account_type', '').strip()
+            search_query = request.data.get('search', '').strip()
 
             # Construct the Q object for complex filtering
             filters = Q()
@@ -115,6 +116,18 @@ def view_users_admin_panel(request):
 
             if account_type:
                 filters &= Q(account_type__iexact=account_type)
+
+            if search_query:
+                filters &= (
+                    Q(first_name__icontains=search_query) |
+                    Q(last_name__icontains=search_query) |
+                    Q(email__icontains=search_query) |
+                    Q(phone_number__icontains=search_query) |
+                    Q(city__icontains=search_query) |
+                    Q(state__icontains=search_query) |
+                    Q(postal_code__icontains=search_query) |
+                    Q(country__icontains=search_query)
+                )
 
             # Retrieve and paginate users based on filters
             users = User.objects.filter(filters).order_by('date_joined', 'account_type')

@@ -1,306 +1,401 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
-import Sidebar from "../../components/Atoms/Sidebar";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+    Alert,
+    Badge,
+    Button,
+    Card,
+    Modal,
+    Offcanvas,
+    Spinner,
+    Table,
+} from "react-bootstrap";
+import { AiFillEdit } from "react-icons/ai";
+import { FaArrowLeft, FaImages, FaPlus } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 import Header from "../../components/HOC/Header";
 import ProductForm from "../../components/Atoms/ProductForm";
-import ProductImageUpload from "../../components/Atoms/ProductImageUpload";
-import { Table, Button, Card, Carousel, Offcanvas, Row, Col } from "react-bootstrap"; // Import Row and Col
+import Sidebar from "../../components/Atoms/Sidebar";
 import { VendorContext } from "../../context/VendorContext";
-import ToastComponent from "../../components/HOC/Toast";
-import { FaTrashAlt } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
-import { FaArrowLeft, FaArrowRight, FaEye } from "react-icons/fa";
-import { AiFillEdit, AiFillDelete } from "react-icons/ai";
-const EditSpecificProduct = ({ route }) => {
+import { FALLBACK_IMAGE, resolveImageUrl } from "../../utils/imageUtils";
+import { buildProductUpdatePayload } from "../../utils/productPayload";
+import "../../assets/Css/ProductEdit.css";
+
+const formatCurrency = (value) =>
+    new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 2,
+    }).format(Number(value) || 0);
+
+const EditSpecificProduct = () => {
     const navigate = useNavigate();
     const {
         specificProduct,
-        AllProduct,
         ProductCategory,
-        Products,
         productCategory,
         ProductSubCategory,
         productSubCategory,
         getSpecificProduct,
-        setvariantId,
-        variantId,
-        setvendorPrice,
-        vendorPrice,
-        setstockQty,
-        stockQty,
-        AddProduct,
         EditProduct,
-        toastMessage,
-        deleteCommon,
         toggleProductStatus,
     } = useContext(VendorContext);
 
+    const categoryRequestRef = useRef(ProductCategory);
+    const initialPayloadRef = useRef(null);
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
+    const [saveError, setSaveError] = useState("");
+    const [saveMessage, setSaveMessage] = useState("");
+    const [showStatusModal, setShowStatusModal] = useState(false);
+    const [isChangingStatus, setIsChangingStatus] = useState(false);
+    const [productDetails, setProductDetails] = useState({});
+
     useEffect(() => {
-        ProductCategory();
+        categoryRequestRef.current();
     }, []);
 
-    const [showToast, setShowToast] = useState(false);
-    const [showSidebar, setShowSidebar] = useState(false); // Manage sidebar visibility on mobile
-    const [productDetails, setProductDetails] = useState({
-        name: "",
-        description: "",
-        brand: "",
-        model: "",
-        year: "",
-        categoryId: "",
-        subCategoryId: "",
-        delivery_charge: null,
-        delivery_time: 0,
-    });
-    const toggleSidebar = () => setShowSidebar(!showSidebar); // Function to toggle sidebar
+    useEffect(() => {
+        initialPayloadRef.current = null;
+        setIsDirty(false);
+        setSaveError("");
+        setSaveMessage("");
+    }, [specificProduct?.id]);
+
+    useEffect(() => {
+        const preventAccidentalExit = (event) => {
+            if (!isDirty) return;
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        window.addEventListener("beforeunload", preventAccidentalExit);
+        return () => window.removeEventListener("beforeunload", preventAccidentalExit);
+    }, [isDirty]);
+
+    const variants = useMemo(
+        () => (Array.isArray(specificProduct?.variants) ? specificProduct.variants : []),
+        [specificProduct?.variants]
+    );
+
     const handleUpdatedData = useCallback((data) => {
+        const serializedPayload = JSON.stringify(buildProductUpdatePayload(data));
         setProductDetails(data);
+
+        if (initialPayloadRef.current === null) {
+            initialPayloadRef.current = serializedPayload;
+            setIsDirty(false);
+            return;
+        }
+
+        setIsDirty(serializedPayload !== initialPayloadRef.current);
     }, []);
 
-    const handleSave = () => {
-        EditProduct(specificProduct?.id, productDetails); // Pass the entire productDetails object
-        setShowToast(true);
-
-        // Automatically hide the toast after 5 seconds
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000);
-    };
-
-    const handleDelete = async (id) => {
-        try {
-            await deleteCommon(`admin/product-images/${id}/delete`);
-            setShowToast(true);
-
-            // Update the specificProduct state to remove the deleted image
-            const updatedImages = specificProduct.variants[0].images.filter((img) => img.id !== id);
-            specificProduct.variants[0].images = updatedImages;
-
-            // Optionally refetch product data to stay consistent with the backend
-            // await fetchProductData();
-
-            setTimeout(() => {
-                setShowToast(false);
-            }, 5000);
-        } catch (error) {
-            console.error("Error deleting the image:", error);
+    const confirmNavigation = (destination, state) => {
+        if (isDirty && !window.confirm("You have unsaved product changes. Leave without saving them?")) {
+            return;
         }
+        navigate(destination, state ? { state } : undefined);
     };
+
+    const handleSave = async () => {
+        if (!specificProduct?.id || isSaving || !isDirty) return;
+
+        setIsSaving(true);
+        setSaveError("");
+        setSaveMessage("");
+
+        const result = await EditProduct(specificProduct.id, productDetails);
+        if (result?.success) {
+            const refreshResult = await getSpecificProduct(specificProduct.id);
+            initialPayloadRef.current = JSON.stringify(buildProductUpdatePayload(productDetails));
+            setIsDirty(false);
+            setSaveMessage(
+                refreshResult?.success
+                    ? "Product details were saved and refreshed."
+                    : "Product details were saved. Refresh the page to reload the latest values."
+            );
+        } else {
+            setSaveError(result?.details || result?.message || "Unable to save product changes.");
+        }
+
+        setIsSaving(false);
+    };
+
+    const handleStatusChange = async () => {
+        if (!specificProduct?.id || isChangingStatus) return;
+
+        setIsChangingStatus(true);
+        setSaveError("");
+        setSaveMessage("");
+        const wasActive = specificProduct?.is_active;
+        const result = await toggleProductStatus(specificProduct.id);
+
+        if (result?.success) {
+            setSaveMessage(
+                result?.message || `Product ${wasActive ? "deactivated" : "activated"} successfully.`
+            );
+            setShowStatusModal(false);
+        } else {
+            setSaveError(result?.message || "Unable to change product status.");
+        }
+
+        setIsChangingStatus(false);
+    };
+
+    const openVariant = (variant) => {
+        confirmNavigation("/addvariant", { variant, product: specificProduct });
+    };
+
+    const addVariant = () => {
+        confirmNavigation("/addvariant", { product: specificProduct });
+    };
+
+    const toggleSidebar = () => setShowSidebar((visible) => !visible);
 
     return (
-        <div className="d-flex flex-column flex-md-row">
-            <div className="d-none d-md-block">
-                <Sidebar /> {/* Sidebar visible on large screens */}
+        <div className="d-flex admin-product-shell">
+            <div className="d-none d-md-block admin-product-sidebar">
+                <Sidebar />
             </div>
 
-            {/* Offcanvas Sidebar for small screens */}
             <Offcanvas
                 show={showSidebar}
                 onHide={toggleSidebar}
                 className="bg-dark text-white"
-                style={{ width: "250px" }}
+                style={{ width: "280px" }}
             >
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title></Offcanvas.Title>
+                <Offcanvas.Header closeButton closeVariant="white">
+                    <Offcanvas.Title>Menu</Offcanvas.Title>
                 </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Sidebar /> {/* Sidebar content */}
+                <Offcanvas.Body className="p-0">
+                    <Sidebar />
                 </Offcanvas.Body>
             </Offcanvas>
 
-            <div style={{ flex: 1 }}>
-                <Header title={"Product Management"} toggleSidebar={toggleSidebar} />
-                <div className="d-flex justify-content-between align-items-center m-4">
-                    <h4>
-                        {specificProduct?.name} ({specificProduct?.code})
-                    </h4>
-                    <div>
-                        <div className="d-flex gap-3">
-                            <Button variant="outline-warning">Save to Draft</Button>
-                            <Button className="savebtn " onClick={handleSave}>
-                                Save
+            <main className="admin-product-main">
+                <Header title="Product Management" toggleSidebar={toggleSidebar} />
+
+                <div className="product-edit-page">
+                    <Button
+                        variant="link"
+                        className="product-back-link"
+                        onClick={() => confirmNavigation("/productList")}
+                    >
+                        <FaArrowLeft aria-hidden="true" />
+                        Back to products
+                    </Button>
+
+                    {!specificProduct?.id ? (
+                        <Alert variant="warning" className="mt-3">
+                            <Alert.Heading className="h5">No product selected</Alert.Heading>
+                            <p className="mb-3">
+                                Open a product from the product list before trying to edit its details or variants.
+                            </p>
+                            <Button variant="warning" onClick={() => navigate("/productList")}>
+                                Open product list
                             </Button>
-                        </div>
-                        <div>
-                            <Button className="savebtn mt-2 ms-5" onClick={() => navigate("/addVariant")}>
-                                Add new Variant
-                            </Button>
-                        </div>
-                    </div>
+                        </Alert>
+                    ) : (
+                        <>
+                            <section className="product-edit-hero">
+                                <div>
+                                    <div className="product-edit-eyebrow">Product {specificProduct?.code}</div>
+                                    <div className="d-flex flex-wrap align-items-center gap-2">
+                                        <h1>{specificProduct?.name || "Untitled product"}</h1>
+                                        <Badge bg={specificProduct?.is_active ? "success" : "secondary"} pill>
+                                            {specificProduct?.is_active ? "Active" : "Inactive"}
+                                        </Badge>
+                                        {isDirty ? (
+                                            <Badge bg="warning" text="dark" pill>
+                                                Unsaved changes
+                                            </Badge>
+                                        ) : null}
+                                    </div>
+                                    <p>
+                                        Update product information here. Stock, pricing and images are managed per
+                                        variant below.
+                                    </p>
+                                </div>
+
+                                <div className="product-edit-actions">
+                                    <Button
+                                        variant={specificProduct?.is_active ? "outline-danger" : "outline-success"}
+                                        onClick={() => setShowStatusModal(true)}
+                                        disabled={isSaving || isChangingStatus}
+                                    >
+                                        {specificProduct?.is_active ? "Deactivate" : "Activate"}
+                                    </Button>
+                                    <Button
+                                        className="savebtn"
+                                        onClick={handleSave}
+                                        disabled={isSaving || !isDirty}
+                                    >
+                                        {isSaving ? (
+                                            <>
+                                                <Spinner animation="border" size="sm" className="me-2" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save changes"
+                                        )}
+                                    </Button>
+                                </div>
+                            </section>
+
+                            {saveError ? (
+                                <Alert variant="danger" dismissible onClose={() => setSaveError("")}>
+                                    <Alert.Heading className="h6">Product could not be updated</Alert.Heading>
+                                    <div>{saveError}</div>
+                                </Alert>
+                            ) : null}
+
+                            {saveMessage ? (
+                                <Alert variant="success" dismissible onClose={() => setSaveMessage("")}>
+                                    {saveMessage}
+                                </Alert>
+                            ) : null}
+
+                            <ProductForm
+                                title="Product details"
+                                productDetails={specificProduct}
+                                ProductCategory={productCategory}
+                                subcategoryApi={ProductSubCategory}
+                                subCategoryData={productSubCategory}
+                                specificProductData={specificProduct}
+                                isEdit
+                                updatedData={handleUpdatedData}
+                                showImgField={false}
+                            />
+
+                            <Card className="variant-management-card">
+                                <Card.Header className="variant-card-header">
+                                    <div>
+                                        <h2>Variants</h2>
+                                        <p>
+                                            Manage SKU, pricing, availability and images separately for each variant.
+                                        </p>
+                                    </div>
+                                    <Button className="savebtn" onClick={addVariant}>
+                                        <FaPlus className="me-2" aria-hidden="true" />
+                                        Add variant
+                                    </Button>
+                                </Card.Header>
+
+                                <Card.Body className="p-0">
+                                    {variants.length === 0 ? (
+                                        <div className="variant-empty-state">
+                                            <FaImages aria-hidden="true" />
+                                            <h3>No variants yet</h3>
+                                            <p>Add the first variant to configure pricing, stock and product images.</p>
+                                            <Button className="savebtn" onClick={addVariant}>
+                                                Add first variant
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="table-responsive">
+                                            <Table hover className="variant-table align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Variant</th>
+                                                        <th>SKU</th>
+                                                        <th>Price</th>
+                                                        <th>Stock</th>
+                                                        <th>Images</th>
+                                                        <th className="text-end">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {variants.map((variant) => (
+                                                        <tr key={variant?.id}>
+                                                            <td>
+                                                                <div className="variant-identity">
+                                                                    <img
+                                                                        src={resolveImageUrl(variant?.images?.[0])}
+                                                                        alt=""
+                                                                        onError={(event) => {
+                                                                            event.currentTarget.onerror = null;
+                                                                            event.currentTarget.src = FALLBACK_IMAGE;
+                                                                        }}
+                                                                    />
+                                                                    <div>
+                                                                        <strong>{variant?.color || "Default variant"}</strong>
+                                                                        <span>{variant?.size || "No size specified"}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <span className="variant-sku">{variant?.sku || "Not set"}</span>
+                                                            </td>
+                                                            <td>
+                                                                <strong>{formatCurrency(variant?.discounted_price)}</strong>
+                                                                {Number(variant?.discount) > 0 ? (
+                                                                    <span className="variant-discount">
+                                                                        {variant.discount}% discount
+                                                                    </span>
+                                                                ) : null}
+                                                            </td>
+                                                            <td>
+                                                                <Badge bg={variant?.in_stock ? "success" : "secondary"}>
+                                                                    {variant?.in_stock ? "Available" : "Unavailable"}
+                                                                </Badge>
+                                                                <span className="variant-quantity">
+                                                                    {variant?.quantity_in_stock ?? 0} units
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <span className="variant-image-count">
+                                                                    <FaImages aria-hidden="true" />
+                                                                    {variant?.images?.length || 0}
+                                                                </span>
+                                                            </td>
+                                                            <td className="text-end">
+                                                                <Button
+                                                                    variant="outline-primary"
+                                                                    size="sm"
+                                                                    onClick={() => openVariant(variant)}
+                                                                >
+                                                                    <AiFillEdit className="me-2" aria-hidden="true" />
+                                                                    Edit & manage images
+                                                                </Button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </Card.Body>
+                            </Card>
+                        </>
+                    )}
                 </div>
+            </main>
 
-                {/* Responsive Card Layout */}
-                <Row className="m-4">
-                    {/* <Col xs={12} md={4} className="mb-4">
-                        <Card>
-                            <h5 className="subHeading">Images</h5>
-                            <hr className="divider" />
-                            <Carousel>
-                                {specificProduct?.variants[0]?.images &&
-                                specificProduct?.variants[0]?.images.length > 0 ? (
-                                    specificProduct.variants[0].images.map((img, index) => (
-                                        <Carousel.Item key={index} style={{position: "relative"}}>
-                                            <img
-                                                className="d-block w-100"
-                                                src={`https://api.motospar.com${img.image}`}
-                                                alt={`Product Image ${index + 1}`}
-                                                style={{
-                                                    height: "300px",
-                                                    objectFit: "cover",
-                                                    borderRadius: "4px",
-                                                }}
-                                            />
-                                            <div
-                                                style={{
-                                                    textAlign: "center",
-                                                }}
-                                            >
-                                                <FaTrashAlt
-                                                    size={24}
-                                                    color="red"
-                                                    style={{cursor: "pointer"}}
-                                                    onClick={() => handleDelete(img.id)}
-                                                    title="Delete Image"
-                                                />
-                                            </div>
-                                        </Carousel.Item>
-                                    ))
-                                ) : (
-                                    <Carousel.Item>
-                                        <img
-                                            className="d-block w-100"
-                                            src="https://via.placeholder.com/200x200?text=No+Image"
-                                            alt="No Image Available"
-                                            style={{
-                                                height: "300px",
-                                                objectFit: "cover",
-                                                borderRadius: "4px",
-                                            }}
-                                        />
-                                    </Carousel.Item>
-                                )}
-                            </Carousel>
-                        </Card>
-                        <Col xs={12}>
-                            <ProductImageUpload />
-                        </Col>
-                    </Col> */}
-
-                    <Col xs={12} md={12} className="mb-4">
-                        <ProductForm
-                            productDetails={specificProduct}
-                            ProductCategory={productCategory}
-                            subcategoryApi={ProductSubCategory}
-                            subCategoryData={productSubCategory}
-                            productApi={AllProduct}
-                            productData={Products}
-                            specificProductApi={getSpecificProduct}
-                            specificProductData={specificProduct}
-                            setvariantId={setvariantId}
-                            setvendorPrice={setvendorPrice}
-                            setstockQty={setstockQty}
-                            variantId={variantId}
-                            vendorPrice={vendorPrice}
-                            stockQty={stockQty}
-                            isEdit={true}
-                            setShowToast={setShowToast}
-                            toggleProductStatusAPI={toggleProductStatus}
-                            updatedData={handleUpdatedData}
-                            showImgField={false}
-                        />
-                    </Col>
-                </Row>
-                <Card className="shadow-sm rounded custom-card m-4">
-                    <div className="p-4">
-                        {/* <div className="d-flex justify-content-between align-items-center mb-3">
-                            <div className="wrapper">
-                                <AiOutlineSearch className="icon" />
-                                <input
-                                    className="input"
-                                    type="text"
-                                    id="search"
-                                    placeholder="Search"
-                                    value={searchTerm}
-                                    onChange={handleSearch}
-                                />
-                            </div>
-                            <div className="d-flex justify-content-between align-items-center">
-                                <span className="m-1">
-                                    Page {currentPage} of {pageCount}
-                                </span>
-                                <FaArrowLeft
-                                    className="m-1"
-                                    onClick={handlePreviousPage}
-                                    style={{
-                                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                    }}
-                                />
-                                <FaArrowRight
-                                    className="m-1"
-                                    onClick={handleNextPage}
-                                    style={{cursor: !hasNext ? "not-allowed" : "pointer", opacity: !hasNext ? 0.5 : 1}}
-                                />
-                            </div>
-                        </div> */}
-
-                        <Table bordered hover responsive className="align-middle">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Variant Color</th>
-                                    <th>Variant SKU</th>
-                                    <th>Variant Discounted Price</th>
-                                    <th>Variant Qty</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {specificProduct?.variants?.map((item, index) => (
-                                    <tr key={item?.id}>
-                                        <td>{index + 1}</td>
-                                        <td style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                            {item?.images?.length > 0 && item.images[0]?.image && (
-                                                <img
-                                                    src={item?.images[0]?.image}
-                                                    alt="Product Image"
-                                                    style={{
-                                                        height: "30px",
-                                                        width: "40px",
-                                                        objectFit: "cover",
-                                                        borderRadius: "4px",
-                                                    }}
-                                                />
-                                            )}
-                                            <span>{item?.color}</span>
-                                        </td>
-                                        <td>{item?.sku}</td>
-                                        <td>{item?.discounted_price}</td>
-                                        <td>{item?.quantity_in_stock}</td>
-
-                                        <td className="d-flex">
-                                            <Button variant="outline-primary" size="sm" className="me-2" title="View">
-                                                <FaEye />
-                                            </Button>
-                                            <Button
-                                                variant="outline-success"
-                                                size="sm"
-                                                className="me-2"
-                                                title="Edit"
-                                                onClick={() => {
-                                                    navigate("/addvariant", { state: { variant: item } });
-                                                }}
-                                            >
-                                                <AiFillEdit />
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    </div>
-                </Card>
-
-            </div>
+            <Modal show={showStatusModal} onHide={() => setShowStatusModal(false)} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>
+                        {specificProduct?.is_active ? "Deactivate product?" : "Activate product?"}
+                    </Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    {specificProduct?.is_active
+                        ? "This also deactivates the product's variants and images, removing it from active listings."
+                        : "This also activates the product's variants and images, making them available to active listings."}
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="outline-secondary" onClick={() => setShowStatusModal(false)}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant={specificProduct?.is_active ? "danger" : "success"}
+                        onClick={handleStatusChange}
+                        disabled={isChangingStatus}
+                    >
+                        {isChangingStatus ? "Updating..." : specificProduct?.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </div>
     );
 };

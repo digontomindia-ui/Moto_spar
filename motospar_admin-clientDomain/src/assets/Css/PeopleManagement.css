@@ -1,0 +1,425 @@
+.people-management-shell {
+    min-height: 100vh;
+    background: var(--admin-canvas, #f5f7fb);
+}
+
+.people-management-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.people-management-page {
+    width: 100%;
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 4px clamp(18px, 3vw, 34px) 40px;
+}
+
+.people-page-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 22px;
+    margin-bottom: 22px;
+}
+
+.people-page-heading h2 {
+    margin: 0;
+    color: #172033;
+    font-size: clamp(1.65rem, 3vw, 2.1rem);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+}
+
+.people-page-heading p {
+    max-width: 720px;
+    margin: 6px 0 0;
+    color: #667085;
+    font-size: 0.88rem;
+}
+
+.people-page-heading .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 40px;
+    border-radius: 9px;
+    font-size: 0.76rem;
+    font-weight: 650;
+}
+
+.people-eyebrow {
+    display: block;
+    margin-bottom: 4px;
+    color: #ea580c;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.people-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    padding: 0;
+    color: #667085;
+    background: transparent;
+    border: 0;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.people-back-link:hover {
+    color: #c2410c;
+}
+
+.people-list-card {
+    overflow: hidden;
+    border: 1px solid #e6eaf0;
+    border-radius: 14px;
+    box-shadow: 0 5px 20px rgba(31, 41, 55, 0.055);
+}
+
+.people-list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 15px 18px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f4;
+}
+
+.people-list-toolbar > div:first-child {
+    display: flex;
+    flex-direction: column;
+}
+
+.people-list-toolbar strong {
+    color: #172033;
+    font-size: 0.9rem;
+}
+
+.people-list-toolbar span {
+    margin-top: 2px;
+    color: #98a2b3;
+    font-size: 0.68rem;
+}
+
+.people-search {
+    position: relative;
+    width: min(390px, 100%);
+}
+
+.people-search > svg {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 13px;
+    color: #98a2b3;
+    transform: translateY(-50%);
+}
+
+.people-search .form-control {
+    min-height: 40px;
+    padding-left: 37px;
+    border-color: #dfe4eb;
+    border-radius: 9px;
+    font-size: 0.75rem;
+}
+
+.people-search .form-control:focus {
+    border-color: #fb923c;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.people-list-table thead th {
+    padding: 12px 15px;
+    color: #667085;
+    background: #f9fafb;
+    border-bottom: 1px solid #e6eaf0;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.people-list-table tbody td {
+    padding: 14px 15px;
+    color: #475467;
+    border-bottom-color: #edf0f4;
+    font-size: 0.75rem;
+    vertical-align: middle;
+}
+
+.people-list-table tbody td > strong {
+    display: block;
+    color: #172033;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.people-cell-note {
+    display: block;
+    max-width: 235px;
+    margin-top: 3px;
+    overflow: hidden;
+    color: #98a2b3;
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.people-list-table .badge {
+    font-size: 0.61rem;
+    font-weight: 650;
+}
+
+.people-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.people-row-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 34px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 650;
+}
+
+.people-empty-state,
+.people-missing-state {
+    display: flex;
+    min-height: 280px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 9px;
+    padding: 36px;
+    color: #98a2b3;
+    text-align: center;
+}
+
+.people-empty-state > svg,
+.people-missing-state > svg {
+    font-size: 1.7rem;
+}
+
+.people-empty-state strong,
+.people-missing-state h2 {
+    margin: 0;
+    color: #344054;
+    font-size: 0.92rem;
+}
+
+.people-empty-state span,
+.people-missing-state p {
+    max-width: 500px;
+    margin: 0;
+    font-size: 0.73rem;
+}
+
+.people-missing-state {
+    min-height: 100vh;
+    background: #f5f7fb;
+}
+
+.people-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 18px;
+    background: #fff;
+    border-top: 1px solid #edf0f4;
+}
+
+.people-pagination span {
+    margin-right: 4px;
+    color: #667085;
+    font-size: 0.72rem;
+}
+
+.people-pagination .btn {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #e2e7ee;
+    border-radius: 9px;
+}
+
+.people-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+}
+
+.people-profile-card,
+.people-detail-card {
+    border: 1px solid #e6eaf0;
+    border-radius: 14px;
+    box-shadow: 0 5px 20px rgba(31, 41, 55, 0.055);
+}
+
+.people-profile-card .card-body {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    padding: 28px 24px;
+    text-align: center;
+}
+
+.people-profile-image {
+    width: 92px;
+    height: 92px;
+    margin-bottom: 14px;
+    object-fit: cover;
+    border: 4px solid #fff;
+    box-shadow: 0 0 0 1px #e6eaf0, 0 8px 22px rgba(31, 41, 55, 0.12);
+}
+
+.people-profile-card h3 {
+    margin: 0 0 8px;
+    color: #172033;
+    font-size: 1.08rem;
+    font-weight: 720;
+}
+
+.people-profile-card .badge {
+    font-size: 0.63rem;
+}
+
+.people-profile-id {
+    width: 100%;
+    margin: 12px 0 18px;
+    overflow: hidden;
+    color: #98a2b3;
+    font-size: 0.64rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.people-contact-list {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 11px;
+    padding-top: 17px;
+    border-top: 1px solid #edf0f4;
+    text-align: left;
+}
+
+.people-contact-list > div {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
+    color: #667085;
+    font-size: 0.72rem;
+}
+
+.people-contact-list svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #f97316;
+}
+
+.people-contact-list span {
+    overflow-wrap: anywhere;
+}
+
+.people-detail-content {
+    display: grid;
+    gap: 20px;
+}
+
+.people-detail-card .card-header {
+    padding: 16px 18px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f4;
+}
+
+.people-detail-card .card-header > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.people-detail-card .card-header strong {
+    color: #172033;
+    font-size: 0.88rem;
+}
+
+.people-detail-card .card-header span {
+    margin-top: 3px;
+    color: #98a2b3;
+    font-size: 0.67rem;
+}
+
+.people-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px 18px;
+    padding: 20px 18px;
+}
+
+.people-detail-field {
+    min-width: 0;
+}
+
+.people-detail-field span {
+    display: block;
+    margin-bottom: 5px;
+    color: #98a2b3;
+    font-size: 0.65rem;
+    font-weight: 650;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+}
+
+.people-detail-field strong {
+    display: block;
+    overflow: hidden;
+    color: #344054;
+    font-size: 0.76rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+    .people-page-heading,
+    .people-list-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .people-page-heading .btn {
+        justify-content: center;
+    }
+
+    .people-search {
+        width: 100%;
+    }
+
+    .people-detail-layout,
+    .people-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .people-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

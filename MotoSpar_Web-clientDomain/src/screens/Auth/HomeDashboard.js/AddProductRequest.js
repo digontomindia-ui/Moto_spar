@@ -15,6 +15,7 @@ const AddProductRequest = () => {
         productSubCategory,
         AllProduct,
         toastMessage,
+        loadingactivity,
     } = useContext(VendorContext);
 
     const [showSidebar, setShowSidebar] = useState(false);
@@ -25,9 +26,9 @@ const AddProductRequest = () => {
     const [brand, setbrand] = useState("");
     const [model, setmodel] = useState("");
     const [year, setyear] = useState("");
-    const [price, setprice] = useState(null);
-    const [weight, setweight] = useState(null);
-    const [discount, setdiscount] = useState(null);
+    const [price, setprice] = useState("");
+    const [weight, setweight] = useState("");
+    const [discount, setdiscount] = useState("");
     const [color, setcolor] = useState("");
     const [size, setsize] = useState("");
     const [dimensions, setdimensions] = useState("");
@@ -36,6 +37,8 @@ const AddProductRequest = () => {
     const [categoryId, setcategoryId] = useState("");
     const [subCategoryId, setsubCategoryId] = useState("");
     const [showToast, setShowToast] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     useEffect(() => {
         ProductCategory();
     }, []);
@@ -50,47 +53,57 @@ const AddProductRequest = () => {
         setsubCategoryId(data?.subcatId);
         AllProduct(0, data?.catId, data?.subcatId);
     };
-    console.log(
-        name,
-        description,
-        brand,
-        model,
-        year,
-        price,
-        weight,
-        discount,
-        color,
-        size,
-        dimensions,
-        material,
-        features,
-        categoryId,
-        subCategoryId
-    );
-    const handleSave = () => {
-        AddProductRequest(
-            name,
-            description,
-            brand,
-            model,
-            year,
-            price,
-            weight,
-            discount,
-            color,
-            size,
-            dimensions,
-            material,
-            features,
-            categoryId,
-            subCategoryId
-        );
-        setShowToast(true);
 
-        // Automatically hide the toast after 5 seconds
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000);
+    const handleSave = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (isSubmitting || loadingactivity) return;
+
+        setIsSubmitting(true);
+        try {
+            const res = await AddProductRequest(
+                name,
+                description,
+                brand,
+                model,
+                year,
+                price,
+                weight,
+                discount,
+                color,
+                size,
+                dimensions,
+                material,
+                features,
+                categoryId,
+                subCategoryId
+            );
+
+            if (res?.success) {
+                setShowToast(true);
+                // Clear form fields only on confirmed success
+                setname("");
+                setdescription("");
+                setbrand("");
+                setmodel("");
+                setyear("");
+                setprice("");
+                setweight("");
+                setdiscount("");
+                setcolor("");
+                setsize("");
+                setdimensions("");
+                setmaterial("");
+                setfeatures("");
+                setcategoryId("");
+                setsubCategoryId("");
+
+                setTimeout(() => {
+                    setShowToast(false);
+                }, 5000);
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     return (
         <div className="d-flex">
@@ -114,15 +127,20 @@ const AddProductRequest = () => {
 
             {/* Main Content */}
             <div style={{ flex: 1 }}>
-                <Header title={"Prduct Request"} toggleSidebar={toggleSidebar} />
+                <Header title={"Product Request"} toggleSidebar={toggleSidebar} />
                 <div className="d-flex justify-content-between align-items-center m-4">
                     <h4>Add New Product Request</h4>
                     <div>
-                        <Button variant="outline-warning" className="me-3">
+                        <Button type="button" variant="outline-warning" className="me-3">
                             Save to Draft
                         </Button>
-                        <Button className="savebtn" onClick={handleSave}>
-                            Save
+                        <Button
+                            type="button"
+                            className="savebtn"
+                            onClick={handleSave}
+                            disabled={isSubmitting || loadingactivity}
+                        >
+                            {isSubmitting || loadingactivity ? "Saving..." : "Save"}
                         </Button>
                     </div>
                 </div>

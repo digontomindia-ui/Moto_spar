@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Form, Row, Col, Container, Card } from "react-bootstrap";
 import "../../assets/Css/ProductForm.css";
-import { VendorContext } from "../../context/VendorContext";
+import ProductImageUpload from "./ProductImageUpload";
 const ProductForm = ({
     ProductCategory,
     subcategoryApi,
@@ -19,14 +19,11 @@ const ProductForm = ({
     stockQty,
     onDataSubmit,
     isEdit,
-    setShowToast,
-    toggleProductStatusAPI,
     updatedData,
-    showImgField
+    showImgField,
+    title
 }) => {
-    // const { setimages, images, toggleProductStatus } = useContext(VendorContext);
-    const [images, setimages] = useState([])
-    const [imageUrl, setimageUrl] = useState('');
+    const [imageFiles, setImageFiles] = useState([]);
     const [name, setname] = useState(specificProductData ? specificProductData?.name : "");
     const [description, setdescription] = useState(specificProductData ? specificProductData?.description : "");
     const [brand, setbrand] = useState(specificProductData ? specificProductData?.brand : "");
@@ -64,23 +61,9 @@ const ProductForm = ({
     const [delivery_time, setdelivery_time] = useState(specificProductData ? specificProductData?.delivery_time : 0);
     const [driver_fees, setdriver_fees] = useState(specificProductData ? specificProductData?.driver_fees : 0);
     const [mechanic_fees, setmechanic_fees] = useState(specificProductData ? specificProductData?.mechanic_fees : 0);
-    const [stock_status, setstock_status] = useState(
-        specificProductData?.variants && specificProductData.variants.length > 0
-            ? specificProductData?.variants[0]?.in_stock
-            : ""
-    );
-   
-    const [gst, setgst] = useState(specificProductData ? specificProductData?.gst_rate?.toString() : 0);
-    const [status, setstatus] = useState("");
-    const [categoryName, setcategoryName] = useState("");
-    const [subCategoryName, setsubCategoryName] = useState(
-        specificProductData?.category ? specificProductData?.sub_category?.name : ""
-    );
+    const [gst, setgst] = useState(specificProductData ? specificProductData?.gst_rate?.toString() : "18");
     const [isChecked, setIsChecked] = useState(false);
-    const [isGst, setisGst] = useState(true
-
-
-    )
+    const [isGst, setisGst] = useState(specificProductData?.is_gst_applicable ?? true);
 
     const handleCheckboxChange = (e) => {
         setIsChecked(e.target.checked);
@@ -98,16 +81,6 @@ const ProductForm = ({
         setsubCategoryId(data.subcatId);
         productApi(0, data?.catId, data?.subcatId); //  passing the sub category and category id to fetch that products
     };
-    const handleProducts = (selectedId) => {
-
-        specificProductApi(selectedId);
-    };
-    useEffect(() => {
-        if (specificProductData?.variants && specificProductData.variants.length > 0) {
-            setstatus(specificProductData?.is_active === false ? "false" : "true");
-        }
-    }, [specificProductData]); // Re-run this effect whenever specificProductData changes
-
     useEffect(() => {
         if (onDataSubmit) {
             const productDetails = {
@@ -131,7 +104,7 @@ const ProductForm = ({
                 delivery_time,
                 driver_fees,
                 mechanic_fees,
-                images,
+                imageFiles,
                 gst_rate:Number(gst),
                 is_gst_applicable: isGst,
             };
@@ -159,7 +132,7 @@ const ProductForm = ({
         delivery_time,
         driver_fees,
         mechanic_fees,
-        images,
+        imageFiles,
         gst,
         isGst,
         onDataSubmit,
@@ -181,6 +154,7 @@ const ProductForm = ({
                 driver_fees,
                 mechanic_fees,
                 gst_rate:Number(gst),
+                is_gst_applicable: isGst,
             });
         }
     }, [
@@ -198,29 +172,13 @@ const ProductForm = ({
         delivery_time,
         driver_fees,
         mechanic_fees,
-        gst
+        gst,
+        isGst
     ]);
-    const handleStatus = () => {
-        toggleProductStatusAPI(specificProductData?.id);
-        // setShowToast(true);
-        setTimeout(() => {
-            setShowToast(false);
-        }, 5000); //
-    };
-    const addImage = () => {
-        if (imageUrl !== "") {
-            setimages([...images, imageUrl]);
-            setimageUrl("");
-        }
-    };
-
-    const removeImage = (index) => {
-        setimages(images.filter((_, i) => i !== index));
-    };
     return (
         <Container>
-            <Card className="shadow-sm rounded custom-card m-4 ">
-                <h5 className="subHeading">Add Product details</h5>
+            <Card className="shadow-sm rounded custom-card product-form-card">
+                <h5 className="subHeading">{title || (isEdit ? "Product information" : "Add product details")}</h5>
                 <hr className="divider"></hr>
                 <Card.Body>
                     <Form>
@@ -245,10 +203,6 @@ const ProductForm = ({
                                                 const selectedId = e.target.value; // Get the selected category ID
                                                 setcategoryId(selectedId);
                                                 handleCategoryChange(selectedId); // Update categoryId
-                                                const selectedCategory = ProductCategory.find(
-                                                    (data) => data.id === selectedId
-                                                );
-                                                setcategoryName(selectedCategory?.name || ""); // Update categoryName
                                             }}
                                         >
                                             <option value="" hidden>
@@ -287,10 +241,6 @@ const ProductForm = ({
                                             onChange={(e) => {
                                                 const selectedId = e.target.value; // Get the selected category ID
                                                 setsubCategoryId(selectedId); // Update categoryId
-                                                const selectedCategory = subCategoryData.find(
-                                                    (data) => data.id === selectedId
-                                                );
-                                                setsubCategoryName(selectedCategory?.name || ""); // Update categoryName
                                             }}
                                         >
                                             <option value="" hidden>
@@ -488,47 +438,6 @@ const ProductForm = ({
                                 </Form.Group>
                             </Col>
                             )}
-                             <Col md={isGst ? 4 : 6}>
-                                <Form.Group controlId="stockStatus">
-                                    <Form.Label className="pt-3">Stock Status</Form.Label>
-                                    <Form.Select
-                                        value={stock_status} // Bind the value to the state
-                                        onChange={(e) => setstock_status(e.target.value)} // Update the state on change
-                                    >
-                                        <option value="true">true</option>
-                                        <option value="false">false</option>
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
-                           
-                            <Col md={isGst ? 4 : 6}>
-                                <Form.Group controlId="model">
-                                    <Form.Label className="pt-3">Status</Form.Label>
-                                    {/* <Form.Select
-                                            value={status} // Bind the value to the state
-                                            onChange={(e) => {}} // Update the state on change
-                                        >
-                                            <option value="true">Active</option>
-                                            <option value="false">InActive</option>
-                                        </Form.Select> */}
-                                    <Form.Select
-                                        value={status} // Controlled value
-                                        onChange={(e) => {
-                                            const selectedStatus = e.target.value; // Get the selected value
-                                            setstatus(selectedStatus); // Update status state
-                                            handleStatus(selectedStatus); // Pass the selected status to your handler
-                                        }}
-                                    >
-                                        {/* Placeholder option */}
-                                        <option value="" disabled hidden>
-                                            {status || "Select Status"}
-                                        </option>
-                                        {/* Actual options */}
-                                        <option value="true">Active</option>
-                                        <option value="false">Inactive</option>
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
                         </Row>
 
                         <Row>
@@ -651,67 +560,18 @@ const ProductForm = ({
                                 onChange={(e) => setdescription(e.target.value)} // Directly handle the change
                             />
                         </Form.Group>
-                        {
-                            showImgField == false ?
-                                null :
-                                <>
-                                    <Form.Label className="pt-3">Add Images URL (Add one at a time)</Form.Label>
-
-                                    <Row className="mb-3">
-                                        <Col md={imageUrl.length > 0 ? 10 : 12}>
-
-                                            <Form.Control
-
-                                                type="text"
-                                                placeholder="Enter image URL"
-                                                value={imageUrl}
-                                                onChange={(e) => setimageUrl(e.target.value)}
-                                            ></Form.Control>
-                                        </Col>
-                                        {
-                                            imageUrl.length > 0 &&
-                                            <Col md={2}>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-primary"
-                                                    onClick={addImage}
-                                                >
-                                                    Add
-                                                </button>
-                                            </Col>
-                                        }
-
-                                    </Row>
-                                    {images.length > 0 && (
-                                        <ul className="list-group mb-3">
-                                            {images.map((url, index) => (
-                                                <li
-                                                    key={index}
-                                                    className="list-group-item d-flex justify-content-between align-items-center"
-                                                >
-                                                    <div>
-                                                        <img
-                                                            src={url}
-                                                            alt="preview"
-                                                            style={{ width: "50px", height: "50px", objectFit: "cover", marginRight: "10px" }}
-                                                        />
-                                                        <a href={url} target="_blank" rel="noopener noreferrer">
-                                                            {url}
-                                                        </a>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-danger btn-sm"
-                                                        onClick={() => removeImage(index)}
-                                                    >
-                                                        Remove
-                                                    </button>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </>
-                        }
+                        {showImgField !== false && (
+                            <div className="mt-4">
+                                <ProductImageUpload
+                                    files={imageFiles}
+                                    onChangeFiles={setImageFiles}
+                                    maxFiles={10}
+                                    maxSizeMB={10}
+                                    title="Initial Variant Images"
+                                    subtitle="Add photos for this product's initial variant (JPEG, PNG, WEBP, GIF up to 10 MB)."
+                                />
+                            </div>
+                        )}
                     </Form>
                 </Card.Body>
             </Card>

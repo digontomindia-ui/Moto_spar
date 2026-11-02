@@ -1,138 +1,87 @@
 import React from "react";
-import {Card, Row, Col} from "react-bootstrap";
+import { Card, Col, Row, Spinner } from "react-bootstrap";
+import { FaChartLine, FaShoppingBag, FaStore, FaUsers } from "react-icons/fa";
 import "../../assets/Css/Homedashboard.css";
-const SummaryCards = ({data}) => {
-    const formatNumber = (num) => {
-        // Ensure the input is valid
-        if (num == null || isNaN(num)) {
-            return "0"; // Fallback to "0" if the input is invalid
-        }
 
-        // Format the number
-        if (num >= 1000000) {
-            return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "m"; // Millions
-        } else if (num >= 1000) {
-            return (num / 1000).toFixed(1).replace(/\.0$/, "") + "k"; // Thousands
-        } else {
-            return num.toLocaleString(); // Numbers less than 1000 with locale formatting
-        }
-    };
+const numberFormatter = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    notation: "compact",
+    maximumFractionDigits: 1,
+});
+
+const formatNumber = (value) => numberFormatter.format(Number(value) || 0);
+const formatCurrency = (value) => currencyFormatter.format(Number(value) || 0);
+
+const Trend = ({ value, unavailableLabel }) => {
+    if (value === undefined || value === null) {
+        return <span className="metric-context">{unavailableLabel}</span>;
+    }
+
+    const numericValue = Number(value) || 0;
+    const direction = numericValue > 0 ? "up" : numericValue < 0 ? "down" : "neutral";
+    const copy = numericValue > 0 ? "up" : numericValue < 0 ? "down" : "no change";
 
     return (
-        <Row className="g-3 mb-4">
-            <Col xs={12} md={6} lg={3}>
-                <Card className="shadow-sm rounded custom-card">
-                    <Card.Body>
-                        <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5>Total Revenue</h5>
-                                <h2>₹{formatNumber(data?.revenue_and_profit?.total_revenue)}</h2>
+        <span className={`metric-trend ${direction}`}>
+            {Math.abs(numericValue).toFixed(1)}% {copy} from yesterday
+        </span>
+    );
+};
+
+const SummaryCards = ({ data, loading }) => {
+    const metrics = [
+        {
+            label: "Total revenue",
+            value: formatCurrency(data?.revenue_and_profit?.total_revenue),
+            icon: FaChartLine,
+            tone: "orange",
+            trend: data?.revenue_and_profit?.revenue_change_percentage,
+        },
+        {
+            label: "Orders",
+            value: formatNumber(data?.order_statistics?.total_orders),
+            icon: FaShoppingBag,
+            tone: "blue",
+            trend: data?.order_statistics?.order_change_percentage,
+        },
+        {
+            label: "Active customers",
+            value: formatNumber(data?.user_statistics?.active_customers),
+            icon: FaUsers,
+            tone: "green",
+            context: "Active customer accounts",
+        },
+        {
+            label: "Active vendors",
+            value: formatNumber(data?.user_statistics?.active_vendors),
+            icon: FaStore,
+            tone: "violet",
+            context: "Approved vendor accounts",
+        },
+    ];
+
+    return (
+        <Row className="g-3 dashboard-metrics">
+            {metrics.map(({ label, value, icon: Icon, tone, trend, context }) => (
+                <Col xs={12} sm={6} xl={3} key={label}>
+                    <Card className="dashboard-metric-card h-100">
+                        <Card.Body>
+                            <div className="metric-card-topline">
+                                <span>{label}</span>
+                                <div className={`metric-icon ${tone}`}>
+                                    <Icon aria-hidden="true" />
+                                </div>
                             </div>
-                            <img
-                                src={require("../../assets/images/sales.png")}
-                                alt="Total Revenue"
-                                className="summary-icon"
-                            />
-                        </div>
-                        <p
-                            className={
-                                data?.revenue_and_profit?.revenue_change_percentage > 0
-                                    ? "text-success"
-                                    : data?.revenue_and_profit?.revenue_change_percentage < 0
-                                    ? "text-error"
-                                    : "text-neutral"
-                            }
-                        >
-                            {data?.revenue_and_profit?.revenue_change_percentage}%
-                            {data?.revenue_and_profit?.revenue_change_percentage > 0
-                                ? " Up from yesterday"
-                                : data?.revenue_and_profit?.revenue_change_percentage < 0
-                                ? " Down from yesterday"
-                                : " No change from yesterday"}
-                        </p>
-                    </Card.Body>
-                </Card>
-            </Col>
-            <Col xs={12} md={6} lg={3}>
-                <Card className="shadow-sm rounded custom-card">
-                    <Card.Body>
-                        <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5>Orders</h5>
-                                <h2>{formatNumber(data?.order_statistics?.total_orders)}</h2>
-                            </div>
-                            <img
-                                src={require("../../assets/images/orders.png")}
-                                alt="Orders"
-                                className="summary-icon"
-                            />
-                        </div>
-                        <p
-                            className={
-                                data?.order_statistics?.order_change_percentage > 0
-                                    ? "text-success"
-                                    : data?.order_statistics?.order_change_percentage < 0
-                                    ? "text-error"
-                                    : "text-neutral"
-                            }
-                        >
-                            {data?.order_statistics?.order_change_percentage}%
-                            {data?.order_statistics?.order_change_percentage > 0
-                                ? " Up from yesterday"
-                                : data?.order_statistics?.order_change_percentage < 0
-                                ? " Down from yesterday"
-                                : " No change from yesterday"}
-                        </p>
-                    </Card.Body>
-                </Card>
-            </Col>
-            <Col xs={12} md={6} lg={3}>
-                <Card className="shadow-sm rounded custom-card">
-                    <Card.Body>
-                        <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5>Buyers</h5>
-                                <h2>{formatNumber(data?.user_statistics?.active_customers)}</h2>
-                            </div>
-                            <img src={require("../../assets/images/buyer.png")} alt="Buyers" className="summary-icon" />
-                        </div>
-                        <p
-                            className={
-                                data?.revenue_and_profit?.revenue_change_percentage > 0
-                                    ? "text-success"
-                                    : data?.revenue_and_profit?.revenue_change_percentage < 0
-                                    ? "text-error"
-                                    : "text-neutral"
-                            }
-                        >
-                            {data?.revenue_and_profit?.revenue_change_percentage}%
-                            {data?.revenue_and_profit?.revenue_change_percentage > 0
-                                ? " Up from yesterday"
-                                : data?.revenue_and_profit?.revenue_change_percentage < 0
-                                ? " Down from yesterday"
-                                : " No change from yesterday"}
-                        </p>
-                    </Card.Body>
-                </Card>
-            </Col>
-            <Col xs={12} md={6} lg={3}>
-                <Card className="shadow-sm rounded custom-card">
-                    <Card.Body>
-                        <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5>Vendors</h5>
-                                <h2>{formatNumber(data?.user_statistics?.active_vendors)}</h2>
-                            </div>
-                            <img
-                                src={require("../../assets/images/vendor.png")}
-                                alt="Vendors"
-                                className="summary-icon"
-                            />
-                        </div>
-                        <p className="text-success">8.5% Up from yesterday</p>
-                    </Card.Body>
-                </Card>
-            </Col>
+                            <strong className="metric-value">
+                                {loading ? <Spinner animation="border" size="sm" /> : value}
+                            </strong>
+                            <Trend value={trend} unavailableLabel={context} />
+                        </Card.Body>
+                    </Card>
+                </Col>
+            ))}
         </Row>
     );
 };

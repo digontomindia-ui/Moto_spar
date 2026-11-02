@@ -323,45 +323,80 @@ const VendorProvider = ({ children }) => {
         subCategoryId
     ) => {
         setloadingactivity(true);
-        // console.log("details from addproduct>>", name, categoryId, description);
         try {
             const formData = new FormData();
 
             // Add product details
-            formData.append("name", name);
-            formData.append("category", categoryId);
-            formData.append("sub_category", subCategoryId);
-            formData.append("description", description);
-            formData.append("brand", brand);
-            formData.append("model", model);
-            formData.append("year", year);
-            formData.append("price", price);
-            formData.append("discount", discount);
-            formData.append("color", color);
-            formData.append("size", size);
-            formData.append("weight", weight);
-            formData.append("dimesnions", dimensions);
-            formData.append("material", material);
-            formData.append("features", features);
+            formData.append("name", name || "");
+            formData.append("category", categoryId || "");
+            formData.append("sub_category", subCategoryId || "");
+            formData.append("description", description || "");
+            formData.append("brand", brand || "");
+            formData.append("model", model || "");
+            formData.append("year", year || "");
+            formData.append("price", price || "");
+            if (discount !== null && discount !== undefined && discount !== "") {
+                formData.append("discount", discount);
+            }
+            formData.append("color", color || "");
+            formData.append("size", size || "");
+            if (weight !== null && weight !== undefined && weight !== "") {
+                formData.append("weight", weight);
+            }
+            formData.append("dimensions", dimensions || "");
+            formData.append("material", material || "");
+            formData.append("features", features || "");
             if (productImages && productImages.length > 0) {
-                productImages?.forEach((item) => {
+                productImages.forEach((item) => {
                     formData.append("images", item);
                 });
             }
             const res = await postFormdatatAuth("vendor/product-request/add", formData);
-            console.log(">>res..AddProductRequest.", res);
-            if (res?.data) {
-                toast.success(res?.message);
-                setloadingactivity(false);
-                setproductImages([]);
+            setloadingactivity(false);
+
+            // Verify confirmed success from top-level and nested API response status
+            const isSuccess = res?.status === true && (res?.data?.status === "success" || !res?.data?.status);
+            if (isSuccess) {
+                const successMsg = res?.message || "Product request created successfully.";
+                toast.success(successMsg);
+                settoastMessage(successMsg);
+                setproductImages([]); // Clear files ONLY upon confirmed success
+                return {
+                    success: true,
+                    status: "success",
+                    message: successMsg,
+                    data: res?.data,
+                };
             } else {
-                setloadingactivity(false);
-                toast.error(res?.message);
-                console.log(res?.message);
+                // Preserve productImages on failure so vendor can correct or retry
+                let errDetails = res?.data?.details;
+                if (Array.isArray(errDetails)) {
+                    errDetails = errDetails.join(", ");
+                } else if (typeof errDetails === "object" && errDetails !== null) {
+                    errDetails = Object.entries(errDetails)
+                        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`)
+                        .join(", ");
+                }
+                const errorMsg = errDetails || res?.message || "Failed to create product request.";
+                toast.error(errorMsg);
+                settoastMessage(errorMsg);
+                return {
+                    success: false,
+                    status: "error",
+                    message: errorMsg,
+                    details: res?.data?.details,
+                };
             }
         } catch (e) {
             setloadingactivity(false);
-            console.log("errorr... in AddProductRequest....VEndorcontext", e);
+            const errorMsg = e?.message || "An error occurred while creating product request.";
+            toast.error(errorMsg);
+            settoastMessage(errorMsg);
+            return {
+                success: false,
+                status: "error",
+                message: errorMsg,
+            };
         }
     };
     const VendorAnalytics = async () => {

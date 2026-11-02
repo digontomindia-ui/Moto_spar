@@ -260,6 +260,20 @@ def view_vendor_profiles(request, user_id=None):
 
             # Retrive vendors with pagination
             vendors = VendorProfile.objects.filter(is_active=True).order_by('-created_at')
+            search_query = request.data.get('search', '').strip()
+            if search_query:
+                vendors = vendors.filter(
+                    Q(user__first_name__icontains=search_query) |
+                    Q(user__last_name__icontains=search_query) |
+                    Q(user__email__icontains=search_query) |
+                    Q(user__phone_number__icontains=search_query) |
+                    Q(store_name__icontains=search_query) |
+                    Q(store_contact_email__icontains=search_query) |
+                    Q(store_contact_phone__icontains=search_query) |
+                    Q(store_city__icontains=search_query) |
+                    Q(store_state__icontains=search_query) |
+                    Q(store_postal_code__icontains=search_query)
+                )
             
             # Slice the queryset using limit and offset
             paginated_data = list(vendors[offset:offset + limit])
