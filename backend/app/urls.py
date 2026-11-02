@@ -24,6 +24,9 @@ app_name = 'app'
 
 
 urlpatterns = [
+    path('account-deletion/', views.public_account_deletion_request, name='public_account_deletion_request'),
+    path('api/customer/account-deletion-request/', views.customer_account_deletion_request, name='customer_account_deletion_request'),
+    path('api/customer/chat/', views.customer_chat, name='customer_chat'),
     # ? views.py URLS
     path('', views.Home.as_view(), name='home'),
 

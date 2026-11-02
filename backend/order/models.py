@@ -36,6 +36,10 @@ from driver.models import Driver
 
 # ***** =====  Tables for Order Related Data  ===== *****
 class Order(models.Model):
+    CHECKOUT_SOURCE_CHOICES = (
+        ('DIRECT', 'Direct purchase'),
+        ('FROM_CART', 'Cart checkout'),
+    )
     PAYMENT_METHOD_CHOICES = (
         ('PAYMENT_GATEWAY', 'PAYMENT_GATEWAY'),
         ('CASH_ON_DELIVERY', 'CASH_ON_DELIVERY'),
@@ -54,6 +58,7 @@ class Order(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=50, choices=PAYMENT_METHOD_CHOICES, default='CASH_ON_DELIVERY')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='PENDING')
+    checkout_source = models.CharField(max_length=16, choices=CHECKOUT_SOURCE_CHOICES, default='DIRECT')
     
     # Delivery Fields
     delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)

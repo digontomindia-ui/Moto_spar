@@ -29,6 +29,7 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
                     'phone_number', 'alternate_phone_number', 'latitude', 'longitude', 
                     'created_at', 'last_modified_at', 'is_active'
                     ]
+        read_only_fields = ['id', 'user', 'created_at', 'last_modified_at', 'is_active']
 
 
 class BillingAddressSerializer(serializers.ModelSerializer):
@@ -39,4 +40,5 @@ class BillingAddressSerializer(serializers.ModelSerializer):
                     'phone_number', 'alternate_phone_number', 
                     'created_at', 'last_modified_at', 'is_active'
                     ]
+        read_only_fields = ['id', 'user', 'created_at', 'last_modified_at', 'is_active']
 # ***** =====  END  ===== *****

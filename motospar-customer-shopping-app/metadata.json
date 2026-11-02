@@ -1,0 +1,6 @@
+{
+  "name": "MotoSpar Customer Shopping App",
+  "description": "Mobile-first customer shopping application for Car and Bike spare parts connected to the live MotoSpar backend API.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

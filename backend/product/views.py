@@ -19,7 +19,7 @@ from django.contrib.auth import login, logout, authenticate
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import transaction
-from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Value, When
+from django.db.models import Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Value, When
 from django.db.models.functions import TruncDate
 from django.db.utils import IntegrityError
 from django.http import JsonResponse, HttpResponseRedirect
@@ -69,6 +69,7 @@ from .image_upload import (
     save_image_records,
     max_images_per_item,
 )
+from .pricing import valid_customer_variant_queryset
 
 
 # Create your views here.
@@ -1289,7 +1290,13 @@ def view_products(request):
                 return JsonResponse(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             # Retrive Product with pagination 
-            products = Product.objects.filter(is_active=True).order_by('-created_at')
+            valid_variants = valid_customer_variant_queryset().filter(product_id=OuterRef('pk'))
+            products = Product.objects.filter(
+                is_active=True,
+                delivery_charge__gte=0,
+                driver_fees__gte=0,
+                mechanic_fees__gte=0,
+            ).filter(Exists(valid_variants)).order_by('-created_at')
 
             # Slice the queryset using limit and offset
             paginated_data = list(products[offset:offset + limit])
@@ -1450,6 +1457,7 @@ def search_product(request):
                 return JsonResponse(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             name = request.data.get('name', None)
+            search_term = str(request.data.get('search', '') or '').strip()
             category_id = request.data.get('category_id', None)
             sub_category_id = request.data.get('sub_category_id', None)
             category_name = request.data.get('category', None)
@@ -1459,15 +1467,79 @@ def search_product(request):
             brand = request.data.get('brand', None)
             model = request.data.get('model', None)
             year = request.data.get('year', None)
+            min_price_raw = request.data.get('min_price', None)
+            max_price_raw = request.data.get('max_price', None)
+
+            try:
+                min_price = (
+                    Decimal(str(min_price_raw))
+                    if min_price_raw not in (None, '') else None
+                )
+                max_price = (
+                    Decimal(str(max_price_raw))
+                    if max_price_raw not in (None, '') else None
+                )
+            except (InvalidOperation, TypeError, ValueError):
+                response_data = {
+                    'data': {
+                        'details': 'min_price and max_price must be numbers',
+                        'status': 'error',
+                        'code': status.HTTP_400_BAD_REQUEST
+                    },
+                    'message': 'Invalid price range',
+                    'status': False
+                }
+                return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+            if (
+                (min_price is not None and min_price < 0)
+                or (max_price is not None and max_price < 0)
+                or (
+                    min_price is not None
+                    and max_price is not None
+                    and min_price > max_price
+                )
+            ):
+                response_data = {
+                    'data': {
+                        'details': 'Provide a non-negative price range with min_price no greater than max_price',
+                        'status': 'error',
+                        'code': status.HTTP_400_BAD_REQUEST
+                    },
+                    'message': 'Invalid price range',
+                    'status': False
+                }
+                return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
 
             # Base query: only active  products
+            valid_variants = valid_customer_variant_queryset().filter(product_id=OuterRef('pk'))
+            if min_price is not None:
+                valid_variants = valid_variants.filter(customer_price__gte=min_price)
+            if max_price is not None:
+                valid_variants = valid_variants.filter(customer_price__lte=max_price)
             products = Product.objects.filter(
-                                    is_active=True, 
-                                ).order_by('-created_at')
+                is_active=True,
+                delivery_charge__gte=0,
+                driver_fees__gte=0,
+                mechanic_fees__gte=0,
+            ).filter(Exists(valid_variants)).order_by('-created_at')
 
             # Filter by name (case-insensitive)
             if name:
                 products = products.filter(name__icontains=name)
+
+            # Free-text storefront search across fields customers commonly use.
+            # Keep the structured brand/model/year filters below available for
+            # callers that need exact multi-field filtering.
+            if search_term:
+                products = products.filter(
+                    Q(name__icontains=search_term)
+                    | Q(brand__icontains=search_term)
+                    | Q(model__icontains=search_term)
+                    | Q(description__icontains=search_term)
+                    | Q(category__name__icontains=search_term)
+                    | Q(sub_category__name__icontains=search_term)
+                )
             
             # Filter by category id (if provided)
             if category_id:
@@ -1513,6 +1585,9 @@ def search_product(request):
             # Filter by year (case-insensitive)
             if year:
                 products = products.filter(year__icontains=year)
+
+            # The correlated variant query applies bounds to the discounted
+            # customer price before pagination and excludes invalid offers.
                 
             # Slice the queryset using limit and offset
             paginated_data = list(products[offset:offset + limit])

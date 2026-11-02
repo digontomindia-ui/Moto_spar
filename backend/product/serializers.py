@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-from decimal import Decimal  # Ensure this import is at the top of the serializers file if not already present
 
 # Django Imports
 from django.contrib.auth import authenticate
@@ -19,6 +18,7 @@ from allauth.socialaccount.models import SocialAccount
 from rest_framework import serializers
 
 # Local Imports
+from .pricing import customer_sale_price, nonnegative_product_charges
 # * Models
 from app.models import User
 from .models import (
@@ -182,18 +182,8 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         return False
 
     def get_discounted_price(self, obj):
-        """
-        Calculate the price after applying the discount, if applicable.
-        """
-        # Use final_listing_price_on_motospar as the base price since listing_price_for_vendor is not provided in the request
-        base_price = obj.final_listing_price_on_motospar or Decimal('0')
-        if obj.discount and obj.discount > 0:
-            # Ensure discount_factor is a Decimal to match base_price type
-            discount_factor = Decimal('100') - obj.discount
-            discount_factor = discount_factor / Decimal('100')
-            discounted_price = base_price * discount_factor
-            return round(float(discounted_price), 2)
-        return float(base_price)
+        price = customer_sale_price(obj)
+        return float(price) if price is not None else None
 
 
 class ProductCompatibilitySerializer(serializers.ModelSerializer):
@@ -236,7 +226,12 @@ class ProductSerializer(serializers.ModelSerializer):
         """
         Retrieve the variants associated with the product.
         """
-        variants = obj.variants.filter(is_active=True)  # Filter active variants
+        if not nonnegative_product_charges(obj):
+            return []
+        variants = obj.variants.filter(
+            is_active=True,
+            final_listing_price_on_motospar__gte=0,
+        ).exclude(discount__lt=0).exclude(discount__gt=100)
         return ProductVariantSerializer(variants, many=True, context=self.context).data
     
     def get_average_rating(self, obj):

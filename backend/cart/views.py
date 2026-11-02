@@ -47,6 +47,7 @@ from app.messages import (
     )
 from .models import Cart, CartItem
 from product.models import Product
+from product.pricing import available_stock_for_variant
 from .serializers import CartItemSerializer
 
 
@@ -84,8 +85,17 @@ def add_cart_item(request):
                     # Attempt to retrieve the existing CartItem
                     existing_cart_item = CartItem.objects.get(cart=cart, variant=variant, is_active=True)
                     # Update the quantity and price_at_addition
+                    if existing_cart_item.quantity + quantity > available_stock_for_variant(variant):
+                        return JsonResponse({
+                            'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                            'message': 'This quantity is not available in live vendor stock.',
+                            'status': False,
+                        }, status=status.HTTP_400_BAD_REQUEST)
                     existing_cart_item.quantity += quantity
-                    existing_cart_item.price_at_addition = round(price_at_addition,2)
+                    existing_cart_item.price_at_addition = price_at_addition
+                    existing_cart_item.delivery_charge = serializer.validated_data['delivery_charge']
+                    existing_cart_item.driver_fees = serializer.validated_data['driver_fees']
+                    existing_cart_item.mechanic_fees = serializer.validated_data['mechanic_fees']
                     existing_cart_item.save()
 
                     # Serialize the updated CartItem
@@ -161,7 +171,10 @@ def edit_cart_item(request, cart_item_id):
         if request.method == 'PATCH':
             # Try to get the cart item by ID
             try:
-                cart_item = CartItem.objects.get(id=cart_item_id, is_active=True)
+                cart_item = CartItem.objects.get(
+                    id=cart_item_id, cart__user=request.user,
+                    cart__is_active=True, is_active=True,
+                )
             except CartItem.DoesNotExist:
                 response_data = {
                     'data': {
@@ -280,7 +293,10 @@ def delete_cart_item(request, cart_item_id):
         if request.method == 'DELETE':
             # Try to get the cart item by ID
             try:
-                cart_item = CartItem.objects.get(id=cart_item_id, is_active=True)
+                cart_item = CartItem.objects.get(
+                    id=cart_item_id, cart__user=request.user,
+                    cart__is_active=True, is_active=True,
+                )
             except CartItem.DoesNotExist:
                 response_data = {
                     'data': {

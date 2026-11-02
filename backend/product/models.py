@@ -185,10 +185,10 @@ class Product(models.Model):
     # -------------------------------    
     is_gst_applicable = models.BooleanField(default=True, help_text="If True, GST will be calculated from the inclusive price.")
     gst_rate = models.PositiveIntegerField(choices=GST_CHOICES, default=18, help_text="GST Rate applicable to this product")
-    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
     delivery_time = models.IntegerField(default=7)  # in days
-    driver_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    mechanic_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    driver_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
+    mechanic_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
 
     # -------------------------------
     # Default Fields
@@ -199,6 +199,19 @@ class Product(models.Model):
 
     class Meta:
         ordering = ['-created_at']  # Order products by creation date by default
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(is_active=False)
+                    | (
+                        models.Q(delivery_charge__gte=0)
+                        & models.Q(driver_fees__gte=0)
+                        & models.Q(mechanic_fees__gte=0)
+                    )
+                ),
+                name='product_active_charges_nonnegative',
+            ),
+        ]
 
     # -------------------------------
     # Instance Methods
@@ -275,11 +288,11 @@ class ProductVariant(models.Model):
     # -------------------------------
     # Price Fields
     # -------------------------------
-    listing_price_for_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    cost_to_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    motospar_commission_from_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    markup_in_prices = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    final_listing_price_on_motospar = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    listing_price_for_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
+    cost_to_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
+    motospar_commission_from_vendor = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
+    markup_in_prices = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
+    final_listing_price_on_motospar = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, validators=[MinValueValidator(0)])
     final_profit_per_part = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     
     # Tax Breakdown Fields (Calculated)
@@ -288,7 +301,7 @@ class ProductVariant(models.Model):
     sgst = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, editable=False)
 
     discount = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True,
-                                    validators=[MinValueValidator(1), MaxValueValidator(100)])
+                                    validators=[MinValueValidator(0), MaxValueValidator(100)])
     # -------------------------------
     # Stock Fields
     # -------------------------------
@@ -316,10 +329,32 @@ class ProductVariant(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['product', 'color', 'size'], name='unique_product_variant')
+            models.UniqueConstraint(fields=['product', 'color', 'size'], name='unique_product_variant'),
+            models.CheckConstraint(
+                check=(
+                    models.Q(is_active=False)
+                    | models.Q(final_listing_price_on_motospar__gte=0)
+                ),
+                name='product_variant_active_price_nonnegative',
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(is_active=False)
+                    | models.Q(discount__isnull=True)
+                    | (models.Q(discount__gte=0) & models.Q(discount__lte=100))
+                ),
+                name='product_variant_active_discount_valid',
+            ),
         ]
         
     def save(self, *args, **kwargs):
+        if self.final_listing_price_on_motospar is not None and self.final_listing_price_on_motospar < 0:
+            raise ValidationError({
+                'final_listing_price_on_motospar': 'Listing price cannot be negative.'
+            })
+        if self.discount is not None and not 0 <= self.discount <= 100:
+            raise ValidationError({'discount': 'Discount must be between 0 and 100 percent.'})
+
         # Calculate GST components from the final listing price (inclusive of GST)
         if self.final_listing_price_on_motospar is not None:
             # Check if GST is applicable on the parent product

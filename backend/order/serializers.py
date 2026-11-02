@@ -84,7 +84,7 @@ class OrderSerializer(serializers.ModelSerializer):
     order_code = serializers.CharField(read_only=True)  # Add order_code field
     
     driver_details = serializers.PrimaryKeyRelatedField(
-        queryset=Driver.objects.all(), write_only=True, required=False, allow_null=True
+        read_only=True
     )
     driver_details_data = DriverSerializer(source='driver_details', read_only=True)
 
@@ -99,6 +99,11 @@ class OrderSerializer(serializers.ModelSerializer):
             'provider_order_id', 'payment_id', 'signature_id', 'is_successful',
             'driver_details_data', 'order_code', 'order_items', 'driver_for_me_url',
             'created_at', 'last_modified_at', 'is_active'
+        ]
+        read_only_fields = [
+            'payment_status', 'provider_order_id', 'payment_id', 'signature_id',
+            'is_successful', 'driver_otp', 'driver_for_me_url', 'created_at',
+            'last_modified_at', 'is_active',
         ]
 
     def create(self, validated_data):

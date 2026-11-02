@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+coverage/
+.aistudio/
+dev-dist/
+docs/reference/
+bun.lock
+.DS_Store
+*.log
+.env*
+!.env.example

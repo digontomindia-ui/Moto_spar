@@ -1,0 +1,217 @@
+MOTOSPAR CUSTOMER APP — GOOGLE PLAY IMPLEMENTATION PLAN
+=======================================================
+
+Current project
+---------------
+Customer Android app: motospar-customer-shopping-app/
+Android package/application ID: com.motosparapp
+Previous APK observed in workspace: versionCode 9, versionName 1.0
+New app version configured here: versionCode 10, versionName 1.1.0
+Current packaging: Capacitor WebView app (React/Vite web bundle in Android)
+Current APK from this workspace: debug build for testing only; do not upload it.
+Backend code: backend/ in the Moto_spar repository.
+
+Goal
+----
+Prepare and release the customer shopping app as a Google Play update while
+preserving the existing Play listing, package identity, customer accounts,
+orders, and backend data.
+
+PHASE 1 — Confirm Play app identity and signing
+-----------------------------------------------
+1. In Play Console, confirm the existing app package is exactly
+   com.motosparapp and confirm its latest uploaded versionCode is 9.
+2. Confirm Play App Signing status and obtain the existing upload keystore/key
+   used for uploads. The app must be signed with the accepted upload key. The
+   debug APK and debug keystore are not valid release credentials.
+3. Store signing values in the release build environment, not in source control:
+   ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and
+   ANDROID_KEY_PASSWORD.
+4. Confirm the Play account has access to the existing listing. Do not create a
+   second listing or change applicationId for this update.
+
+Exit criteria: package identity and valid upload signing credentials are
+confirmed before making a release bundle.
+
+PHASE 2 — Close application security and provider blockers
+----------------------------------------------------------
+1. IMPLEMENTED IN CODE: Android access/refresh tokens and user session are now
+   AES-GCM encrypted with a key held by Android Keystore. Browser/PWA storage
+   remains separate. On the first Android launch after updating, the app checks
+   both the old WebView localStorage keys and the previous React Native
+   AsyncStorage SQLite database (RKStorage/catalystLocalStorage), migrates the
+   three customer session keys, and removes the plaintext rows after a
+   successful encrypted save. Next: validate the version-9-to-version-10
+   migration, refresh, logout, restore, and account switching on physical
+   Android devices before production rollout.
+2. IMPLEMENTED IN CODE: Android Google sign-in uses Credential Manager and
+   passes an ID token to the existing backend callback endpoint. The backend
+   verifies its Google signature, expiry, issuer, audience, and verified email
+   before issuing a MotoSpar session. The previous app's public web client ID
+   is configured in this local app/backend environment. Deploy the backend
+   change and test with a registered Android OAuth client and the relevant
+   package/SHA certificate fingerprints. Manual token entry is development-only.
+3. IMPLEMENTED IN CODE: Android checkout uses the native Razorpay SDK for both
+   cart checkout and payment retry; browser checkout keeps Razorpay web. Validate
+   the integration on a physical device. Complete real
+   test-mode payment initiation, SDK return, server signature verification,
+   cancellation, failure, retry, and order-status reconciliation on devices.
+4. Confirm the production API URL is HTTPS and the deployed backend has the
+   matching CORS, authentication, payment callback/webhook, and rate-limit setup.
+5. Confirm all policy/privacy/support links are live and correct. Verify that
+   no backend secrets, payment secrets, or service credentials are bundled in
+   the Android client.
+
+Exit criteria: sign-in, session security, and payment have passed real-device
+validation with provider-approved configurations.
+
+PHASE 3 — Prepare and deploy backend safeguards
+-----------------------------------------------
+1. Back up the production database and review the negative-price variants
+   before migration. The migration preserves negative source prices for admin
+   review but deactivates those variants and their active cart lines.
+2. Install the project backend requirements in the deployment environment;
+   run Django system and migration checks there.
+3. Apply backend/product/migrations/0007_reject_negative_variant_prices.py
+   through the normal deployment process before enabling the new app release.
+4. Review quarantined variants in Django admin. Correct their prices from
+   authoritative vendor/catalog information before reactivating them.
+5. Verify product search/details do not expose invalid active prices and that
+   cart/order endpoints reject invalid or unavailable variants.
+
+Exit criteria: backend migration is applied, price data is reviewed, and the
+live API passes catalog, cart, order, and payment smoke checks.
+
+PHASE 4 — Build and inspect the Android release bundle
+------------------------------------------------------
+1. Set VITE_API_BASE_URL to the production HTTPS API origin before building.
+   Configure only public client IDs as VITE_* values; keep private keys on the
+   backend.
+2. Review Android minimum SDK. The new project currently uses API 24 while the
+   old APK supported API 23. Decide whether ending API 23 support is acceptable
+   for existing customers before release.
+3. Increment versionCode for every Play upload. The current value is 10 to be
+   greater than the observed previous APK's 9. Set versionName to the customer
+   release label selected by product, currently 1.1.0.
+4. Build the signed Android App Bundle from android/ with JDK 21 and the
+   environment-only keystore settings:
+   ./gradlew bundleRelease
+5. Inspect the resulting AAB and verify package, versionCode 10, versionName,
+   target SDK, permissions, release signing, minification, and embedded API
+   configuration. Never upload app-debug.apk.
+
+Exit criteria: signed release AAB is reproducible and matches the intended
+package, version, API environment, and signing identity.
+
+PHASE 5 — Regression and device verification
+--------------------------------------------
+Verify on supported Android versions and both a small phone and a larger
+screen. Use real backend data; do not substitute mock catalog or order data.
+
+Customer flows:
+- Fresh install, update install over version 9, launch, and restore session.
+- Email registration/login, Google sign-in, logout, token refresh, and expiry.
+- Search by part name/brand/model, filters, detail variants, stock, and images.
+- Add/remove/update cart; address create/edit/delete; cart totals and fees.
+- Buy Now and cart checkout, COD, Razorpay success/failure/cancel/retry.
+- Server-verified order state, tracking, wishlist, profile, and support flows.
+- Network loss, timeout, expired session, unavailable product, and empty states.
+- Confirm negative/invalid prices are never presented as purchasable and cannot
+  enter cart or order totals.
+
+Exit criteria: release candidate has no known checkout/security blocker and
+critical customer journeys pass with production-like backend data.
+
+PHASE 6 — Play Console readiness
+--------------------------------
+1. Complete store listing: app name, short/full descriptions, screenshots,
+   feature graphic, icon, and support contact.
+2. Complete Data safety, content rating, target audience, ads declaration,
+   app-access instructions for review, privacy policy, and account-deletion
+   requirements that apply to the app.
+3. Upload the AAB to Internal testing first. Install from Play and verify the
+   Play-signed update path and payment/auth behavior.
+4. Promote to Closed testing, gather feedback, and fix release-blocking issues.
+5. Roll out to Production with a staged percentage, monitor crashes, ANRs,
+   login, checkout/payment reconciliation, and support reports, then increase
+   rollout only if metrics remain healthy.
+
+Exit criteria: Play review requirements are complete, internal/closed tests
+pass, and production rollout has an owner and monitoring plan.
+
+Important current status
+------------------------
+- versionCode/versionName have been set to 10 / 1.1.0 in the Android Gradle
+  configuration.
+- A successful debug APK build proves the project compiles; it is not a signed
+  Play release and is not evidence that OAuth/payment are production-ready.
+- The backend migration has not been applied to production.
+- Secure native token storage and a version-9 React Native AsyncStorage
+  migration are implemented and compile, but migration and lifecycle still
+  need physical-device verification. Android-specific Google/Razorpay
+  verification remains required before Play submission.
+- No repository push or Play Console upload has been performed.
+
+Release audit — 2026-11-02
+-------------------------
+- The adjacent MotoSpar-production-test.apk is package com.motosparapp,
+  versionCode 9 / versionName 1.0, minSdk 23, targetSdk 35. Its APK signer is
+  Android Debug (SHA-256 c36e13b48865c24d5e376b6e232af7dbb446646586c4f6f9c06927816c13c660),
+  so it is not a Play upload key and must not be used to publish a release.
+- This project keeps the same applicationId and advances versionCode to 10 /
+  versionName 1.1.0. It targets API 36, which meets the Google Play requirement
+  in effect from August 31, 2026. It currently requires API 24; Capacitor 8's
+  Android library also declares API 24, so Android 6.0 (API 23) devices cannot
+  receive this build.
+- No accepted Play upload keystore is present in this checkout or the previous
+  app. The locally built release-variant AAB is signed with the Android debug
+  key for a compile audit only and is NOT valid for the existing Play listing.
+  It is named app-release-DEBUG-KEY-TEST-ONLY.aab to prevent accidental upload.
+- Android chat now calls an authenticated Django /api/customer/chat/ endpoint,
+  which forwards to a server-side N8N_CHAT_WEBHOOK_URL. Deploy this endpoint and
+  configure an active production /webhook/ URL before enabling customer chat.
+  The supplied /webhook-test/ URL is local development configuration only.
+- Android Google sign-in now uses native Credential Manager with the previous
+  app's public web client ID. The backend ID-token verification change is local
+  and must be deployed before this new path can work against production.
+- Native Razorpay checkout, foreground geolocation, and Google sign-in are
+  implemented and compile. Provider registration and end-to-end payment/sign-in
+  validation on a physical Android device remain required.
+- The latest debug APK is 8.62 MB and uses the same Android Debug signing
+  certificate as MotoSpar-production-test.apk, so it can be tested as an update
+  over that specific APK. This debug certificate is not a Play upload key.
+- The configured https://api.motospar.com/ origin answered HTTP 200 on
+  2026-11-02. No Android device or emulator was connected for end-to-end tests.
+- The local backend virtual environment has google-auth installed. Django's
+  `manage.py check` passed, and 22 focused backend tests for Google ID tokens,
+  chat, deletion requests, pricing, cart, checkout, and payment passed on SQLite.
+- The backend Razorpay callback now requires the customer session, verifies the
+  signature before writing payment fields, checks the provider's captured
+  payment ID/order/amount/currency, and preserves unrelated cart lines.
+  Payment retry reuses the pending provider order, and direct Buy Now no longer
+  mutates the cart. Deploy the order checkout_source migration before the new
+  callback code. Real test-mode payments still require a device.
+- Order creation now rejects forged payment state and provider identifiers
+  supplied by a customer; item fields are sanitized before creation. The
+  Android checkout only reports success when the server explicitly returns
+  payment_status SUCCESS and is_successful true.
+- Production builds now ignore local API-base overrides; the editable API
+  target control is available only in development. Android release traffic is
+  pinned to the configured HTTPS MotoSpar API origin.
+- The customer app now has an account-deletion request action. Django provides
+  an authenticated request endpoint and a public CSRF-protected
+  /account-deletion/ page. Requests are stored in ContactUs for support to
+  verify and process. These paths must be deployed, the support workflow must
+  actually delete associated data, and the public URL must be entered in Play
+  Console. The existing https://motospar.com/policy page did not load in this
+  audit; publish a working privacy policy with actual retention practices.
+- Live catalog audit found five active negative sale prices caused by discounts
+  greater than 100%, one negative driver fee, 13 variants marked in stock with
+  zero live VendorStock, and a product image pointing at example.com. Local
+  backend constraints, search filtering, server-priced cart/order validation,
+  and the quarantine migration are in place, but production data remains
+  unfixed until deployment and catalog-owner correction. Do not invent prices
+  or stock quantities.
+- The user cannot connect an Android device today. Fresh install, version-9
+  update/migration, Google sign-in, native Razorpay, and Play-signed update
+  testing remain unverified.

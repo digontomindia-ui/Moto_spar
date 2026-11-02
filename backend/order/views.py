@@ -9,7 +9,7 @@ import tempfile
 import uuid
 import requests
 from PIL import Image as PILImage
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 # Third-party Imports
 from django.conf import settings
@@ -36,6 +36,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from product.pricing import available_stock_for_variant, customer_sale_price
 
 # Local Imports
 from app.permissions import (
@@ -54,16 +55,64 @@ from .utils import notify_vendor_about_order_assignment
 from .models import Order, OrderItem
 from .serializers import OrderSerializer, OrderItemSerializer
 from driver.serializers import DriverSerializer
-from cart.serializers import CartItemSerializer
 
 from product.models import Product, ProductVariant
 from cart.models import Cart, CartItem
 from vendor.models import VendorProfile, VendorStock
 from app.models import User
 from driver.models import Driver
+from shipping.models import BillingAddress, ShippingAddress
 
 
 # Create your views here.
+
+
+def _customer_order_addresses(data, user):
+    """Resolve only this customer's addresses; shipping IDs may supply billing."""
+    try:
+        shipping_id = uuid.UUID(str(data.get('shipping_address')))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    shipping = ShippingAddress.objects.filter(
+        id=shipping_id, user=user, is_active=True,
+    ).first()
+    if shipping is None:
+        return None
+
+    requested_billing = data.get('billing_address')
+    if not requested_billing:
+        return shipping, None, shipping
+    try:
+        billing_id = uuid.UUID(str(requested_billing))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    billing = BillingAddress.objects.filter(
+        id=billing_id, user=user, is_active=True,
+    ).first()
+    if billing is not None:
+        return shipping, billing, None
+    billing_source = ShippingAddress.objects.filter(
+        id=billing_id, user=user, is_active=True,
+    ).first()
+    if billing_source is None:
+        return None
+    return shipping, None, billing_source
+
+
+def _snapshot_billing_address(source, user):
+    return BillingAddress.objects.create(
+        user=user,
+        name=source.name,
+        email=source.email,
+        address_type=source.address_type,
+        street_address=source.street_address,
+        city=source.city,
+        state=source.state,
+        postal_code=source.postal_code,
+        country=source.country,
+        phone_number=source.phone_number,
+        alternate_phone_number=source.alternate_phone_number,
+    )
 
 # {
 #     "customer": 1,  // User ID
@@ -93,19 +142,36 @@ def create_order(request):
             # Copy and manipulate request data
             data = request.data.copy()
             user = request.user
+            resolved_addresses = _customer_order_addresses(data, user)
+            if resolved_addresses is None:
+                return JsonResponse({
+                    'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                    'message': 'Select an active address belonging to your account.',
+                    'status': False,
+                }, status=status.HTTP_400_BAD_REQUEST)
+            shipping_address, billing_address, billing_source = resolved_addresses
+            data['shipping_address'] = str(shipping_address.id)
+            data['billing_address'] = str(billing_address.id) if billing_address else None
 
             # Extracting order items data to manipulate
             order_items_data = data.pop('order_items', [])
+            if not order_items_data:
+                return JsonResponse({
+                    'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                    'message': 'Add at least one valid part before placing an order.',
+                    'status': False,
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Initialize total_price to calculate
             total_price = Decimal('0.0')
 
             # Initialize total mechanic fees
             total_mechanic_fees = Decimal('0.0')
+            requested_by_variant = defaultdict(int)
 
-            # Extract delivery_charge and driver_fees
-            delivery_charge = Decimal(str(data.get('delivery_charge', 0)))
-            driver_fees = Decimal(str(data.get('driver_fees', 0)))
+            # These charges must come from catalog records, never the request.
+            delivery_charge = Decimal('0')
+            driver_fees = Decimal('0')
 
             # Determine the initial order status for items based on payment method
             payment_method = data.get('payment_method')
@@ -116,24 +182,62 @@ def create_order(request):
 
             # Process each order item
             for item in order_items_data:
+                if not isinstance(item, dict):
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'Invalid order item.', 'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 variant_id = item.get('variant')
-                quantity = item.get('quantity')
-                mechanic_fees = Decimal(str(item.get('mechanic_fees', 0)))  # Mechanic fees per item
+                try:
+                    quantity = int(item.get('quantity'))
+                    mechanic_fees = Decimal(str(item.get('mechanic_fees', 0)))
+                except (TypeError, ValueError, InvalidOperation):
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'Invalid quantity or installation fee.', 'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 mechanic_fees_for_customer = mechanic_fees  # Mechanic fees for customer per item
                 mechanic_fees_for_mechanic = mechanic_fees * Decimal('0.9')  # Mechanic fees for mechanic per item
 
                 # Retrieve the variant object
                 variant = get_object_or_404(ProductVariant, id=variant_id, is_active=True)
-
-                # Calculate price after discount (using Decimal for precise financial math)
-                discount_decimal = Decimal(variant.discount) / Decimal(100) if variant.discount else Decimal(0)
-                price = variant.final_listing_price_on_motospar * (Decimal(1) - discount_decimal)
+                price = customer_sale_price(variant)
+                if not variant.product.is_active or price is None:
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'This part has an invalid price and cannot be ordered. Please contact support.',
+                        'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                if variant.id in requested_by_variant:
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'The same part cannot be listed twice in one order.',
+                        'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                requested_by_variant[variant.id] += quantity
+                if (quantity < 1 or not variant.in_stock
+                        or requested_by_variant[variant.id] > available_stock_for_variant(variant)):
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'This quantity is not available in live vendor stock.',
+                        'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                if mechanic_fees not in (Decimal('0'), variant.product.mechanic_fees):
+                    return JsonResponse({
+                        'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                        'message': 'Invalid installation fee.', 'status': False,
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                delivery_charge += variant.product.delivery_charge
+                driver_fees += variant.product.driver_fees
                 
                 # Calculate item_total_price for the current item
                 item_total_price = price * Decimal(quantity)
 
                 # Update item data with calculated price, item_total_price, and initial order status
+                item.clear()  # discard all untrusted order-item fields
+                item['variant'] = str(variant.id)
                 item['price'] = float(price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                item['quantity'] = quantity
                 item['item_total_price'] = float(item_total_price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
                 # item['mechanic_fees'] = mechanic_fees  # Add mechanic_fees to the item data
                 item['mechanic_fees_for_customer'] = float(mechanic_fees_for_customer)
@@ -160,6 +264,9 @@ def create_order(request):
             if serializer.is_valid():
                 with transaction.atomic():
                     order = serializer.save()
+                    if billing_source is not None:
+                        order.billing_address = _snapshot_billing_address(billing_source, user)
+                        order.save(update_fields=['billing_address'])
 
                     # Create order items
                     for item in order_items_data:
@@ -180,37 +287,8 @@ def create_order(request):
                                 'message': INVALID_DATA_MESSAGE,
                                 'status': False
                             }
+                            transaction.set_rollback(True)
                             return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-
-                    # ! If payment method is not CASH_ON_DELIVERY, add items back to cart
-                    if payment_method != 'CASH_ON_DELIVERY':
-                        cart, _ = Cart.objects.get_or_create(user=user, is_active=True)
-                        for item in order_items_data:
-                            # Add each item to the cart
-                            cart_item_data = {
-                                'cart': cart.id,
-                                'variant': item['variant'],
-                                'quantity': item['quantity'],
-                                'price_at_addition': item['price']
-                            }
-                            cart_item_serializer = CartItemSerializer(data=cart_item_data)
-                            if cart_item_serializer.is_valid():
-                                cart_item_serializer.save()
-                            else:
-                                # Handle cart item serializer errors
-                                error_messages = [f'{field}: {", ".join(messages)}' for field, messages in cart_item_serializer.errors.items()]
-                                formatted_message = ', '.join(error_messages)
-                                response_data = {
-                                    'data': {
-                                        'details': formatted_message,
-                                        'status': 'error',
-                                        'code': status.HTTP_400_BAD_REQUEST
-                                    },
-                                    'message': INVALID_DATA_MESSAGE,
-                                    'status': False
-                                }
-                                return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
 
 
                 response_data = {
@@ -270,10 +348,26 @@ def create_order_from_cart(request):
         # Copy and manipulate request data
         data = request.data.copy()
         user = request.user
+        resolved_addresses = _customer_order_addresses(data, user)
+        if resolved_addresses is None:
+            return JsonResponse({
+                'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                'message': 'Select an active address belonging to your account.',
+                'status': False,
+            }, status=status.HTTP_400_BAD_REQUEST)
+        shipping_address, billing_address, billing_source = resolved_addresses
+        data['shipping_address'] = str(shipping_address.id)
+        data['billing_address'] = str(billing_address.id) if billing_address else None
 
         # Get the user's cart and cart items
         cart = get_object_or_404(Cart, user=user, is_active=True)
         cart_items = CartItem.objects.filter(cart=cart, is_active=True)
+        if not cart_items.exists():
+            return JsonResponse({
+                'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                'message': 'Your cart has no available items to order.',
+                'status': False,
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Initialize total_price to calculate
         total_price = Decimal('0.0')
@@ -298,16 +392,31 @@ def create_order_from_cart(request):
         # Process each cart item
         for cart_item in cart_items:
             variant = cart_item.variant
+            price = customer_sale_price(variant)
+            if not variant.is_active or not variant.product.is_active or price is None:
+                return JsonResponse({
+                    'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                    'message': 'A part in this cart is unavailable or has an invalid price. Remove it from the cart before checkout.',
+                    'status': False,
+                }, status=status.HTTP_400_BAD_REQUEST)
             quantity = cart_item.quantity
-            delivery_charge = Decimal(str(cart_item.delivery_charge)) if cart_item.delivery_charge else Decimal('0.0')
-            driver_fees = Decimal(str(cart_item.driver_fees)) if cart_item.driver_fees else Decimal('0.0')
-            mechanic_fees = Decimal(str(cart_item.mechanic_fees)) if cart_item.mechanic_fees else Decimal('0.0')
+            if quantity < 1 or not variant.in_stock or quantity > available_stock_for_variant(variant):
+                return JsonResponse({
+                    'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                    'message': 'A cart item is no longer available in the requested quantity.',
+                    'status': False,
+                }, status=status.HTTP_400_BAD_REQUEST)
+            delivery_charge = variant.product.delivery_charge
+            driver_fees = variant.product.driver_fees
+            mechanic_fees = Decimal(str(cart_item.mechanic_fees or 0))
+            if mechanic_fees not in (Decimal('0'), variant.product.mechanic_fees):
+                return JsonResponse({
+                    'data': {'status': 'error', 'code': status.HTTP_400_BAD_REQUEST},
+                    'message': 'A cart item has an invalid installation fee.',
+                    'status': False,
+                }, status=status.HTTP_400_BAD_REQUEST)
             mechanic_fees_for_customer = mechanic_fees
             mechanic_fees_for_mechanic = mechanic_fees * Decimal('0.9')
-
-            # Calculate price after discount (using Decimal)
-            discount_decimal = Decimal(variant.discount) / Decimal(100) if variant.discount else Decimal(0)
-            price = variant.final_listing_price_on_motospar * (Decimal(1) - discount_decimal)
 
             # Calculate item_total_price for the current item
             item_total_price = price * Decimal(quantity)
@@ -354,6 +463,11 @@ def create_order_from_cart(request):
         if serializer.is_valid():
             with transaction.atomic():
                 order = serializer.save()
+                order.checkout_source = 'FROM_CART'
+                order.save(update_fields=['checkout_source'])
+                if billing_source is not None:
+                    order.billing_address = _snapshot_billing_address(billing_source, user)
+                    order.save(update_fields=['billing_address'])
 
                 # Create order items
                 for item in order_items_data:
@@ -374,6 +488,7 @@ def create_order_from_cart(request):
                             'message': INVALID_DATA_MESSAGE,
                             'status': False
                         }
+                        transaction.set_rollback(True)
                         return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)
 
                 # Delete all cart items after successful order creation

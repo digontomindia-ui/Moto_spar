@@ -2,8 +2,12 @@
 
 # Standard Library Imports
 from datetime import date, datetime, timedelta
+import os
 import requests
 import mimetypes
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_auth_requests
+from google.auth import exceptions as google_auth_exceptions
 
 # Third-party Imports
 from django.conf import settings
@@ -11,6 +15,10 @@ from django.contrib.auth import authenticate
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import JsonResponse
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.shortcuts import render
+from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import permissions, status
@@ -94,6 +102,104 @@ from .utils import (
 
 
 # Create your views here.
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def customer_chat(request):
+    """Forward a customer's message to the server-configured support workflow."""
+    if request.user.account_type != 'customer':
+        return Response({'message': 'Customer account required.'}, status=403)
+
+    message = request.data.get('chatInput')
+    session_id = request.data.get('sessionId')
+    if (not isinstance(message, str) or not message.strip()
+            or len(message) > 4000 or not isinstance(session_id, str)
+            or not session_id.strip() or len(session_id) > 128):
+        return Response({'message': 'Enter a valid chat message and session.'}, status=400)
+
+    webhook_url = os.environ.get('N8N_CHAT_WEBHOOK_URL', '').strip()
+    if not webhook_url.startswith('https://'):
+        return Response({'message': 'Support chat is currently unavailable.'}, status=503)
+
+    try:
+        upstream = requests.post(
+            webhook_url,
+            json={
+                'action': 'sendMessage',
+                'chatInput': message.strip(),
+                'sessionId': session_id,
+                'source': 'motospar-customer-mobile-app',
+            },
+            timeout=20,
+        )
+        upstream.raise_for_status()
+        try:
+            body = upstream.json()
+        except ValueError:
+            body = upstream.text
+        if isinstance(body, list) and body:
+            body = body[0]
+        reply = (body.get('output') or body.get('reply') or body.get('text')
+                 or body.get('message')) if isinstance(body, dict) else body
+        if not isinstance(reply, str) or not reply.strip():
+            return Response({'message': 'Support chat returned an empty response.'}, status=502)
+        return Response({'reply': reply})
+    except requests.RequestException:
+        return Response({'message': 'Support chat is currently unavailable.'}, status=502)
+
+
+def _record_account_deletion_request(email, name, phone_number=''):
+    """Persist a reviewable deletion request; support verifies ownership."""
+    email = email.strip().lower()
+    validate_email(email)
+    if ContactUs.objects.filter(
+        email__iexact=email,
+        message__startswith='ACCOUNT DELETION REQUEST',
+        created_at__gte=timezone.now() - timedelta(days=1),
+        is_active=True,
+    ).exists():
+        return None
+    entry = ContactUs.objects.create(
+        name=(name or email)[:255], email=email,
+        phone_number=(phone_number or '')[:16],
+        message='ACCOUNT DELETION REQUEST — MotoSpar customer account and associated data. Verify account ownership and process under the privacy policy.',
+    )
+    notify_admin_about_contact_request(entry)
+    return entry
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def customer_account_deletion_request(request):
+    if request.user.account_type != 'customer':
+        return Response({'message': 'Customer account required.'}, status=403)
+    user = request.user
+    try:
+        _record_account_deletion_request(
+            user.email, user.get_full_name() or user.email,
+            user.phone_number or '',
+        )
+    except ValidationError:
+        return Response({'message': 'Your account email is invalid; contact support.'}, status=400)
+    return Response({'message': 'Your account deletion request has been recorded. Support will verify ownership and contact you.'}, status=202)
+
+
+@require_http_methods(['GET', 'POST'])
+def public_account_deletion_request(request):
+    """Public Play Console deletion link, with a CSRF-protected request form."""
+    context = {'submitted': False, 'error': ''}
+    if request.method == 'POST':
+        email = request.POST.get('email', '')
+        if not isinstance(email, str) or len(email) > 254:
+            context['error'] = 'Enter a valid account email address.'
+        else:
+            try:
+                _record_account_deletion_request(email, email)
+                context['submitted'] = True
+            except ValidationError:
+                context['error'] = 'Enter a valid account email address.'
+    return render(request, 'account_deletion_request.html', context)
+
+
 # ***** View to Check API is running *****
 # ! For Home Page
 class Home(APIView):
@@ -931,9 +1037,8 @@ def google_oauth2_login(request):
 @permission_classes([AllowAny])
 def sign_in_via_gmail(request):
     """
-    This will handle the callback from Google OAuth2 login. 
-    It will exchange the authorization code for an access token 
-    and then use that to retrieve user information.
+    Exchange a Google OAuth access token or verified ID token for a MotoSpar
+    session. Native Android clients send an ID token from Credential Manager.
     Method: POST
     URL: /api/login/google/    
     """
@@ -944,24 +1049,50 @@ def sign_in_via_gmail(request):
             return handle_invalid_method()
                 
         access_token = request.data.get('access_token')
+        raw_id_token = request.data.get('id_token')
         account_type = request.data.get('account_type', 'customer')  # ? CHOICES = "customer" / "vendor" / "admin" / "mechanic"
 
-        # * Using Google API to verify the access token
-        user_info_url = 'https://www.googleapis.com/oauth2/v1/userinfo'
-        headers = {'Authorization': f'Bearer {access_token}'}
-        user_info_response = requests.get(user_info_url, headers=headers)
-
-        # * Check if the user info response is successful
-        if user_info_response.status_code != 200:
-            # * Failed to obtain user info
-            # * Return an error response
-            return handle_error_response(
-                details=DEFAULT_ERROR_MESSAGE,
-                message='Failed to obtain user info',
-                status_code=status.HTTP_400_BAD_REQUEST
+        if raw_id_token:
+            account_type = 'customer'
+            # Credential Manager returns a signed ID token. Verify Google's
+            # signature, expiry, issuer and our configured web client audience.
+            try:
+                user_info = google_id_token.verify_oauth2_token(
+                    raw_id_token,
+                    google_auth_requests.Request(),
+                    settings.GOOGLE_OAUTH2_CLIENT_ID,
+                )
+            except (ValueError, google_auth_exceptions.GoogleAuthError):
+                return handle_error_response(
+                    details=DEFAULT_ERROR_MESSAGE,
+                    message='Invalid Google identity token',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            if user_info.get('email_verified') is not True:
+                return handle_error_response(
+                    details=DEFAULT_ERROR_MESSAGE,
+                    message='Google email is not verified',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            if not access_token:
+                return handle_error_response(
+                    details=DEFAULT_ERROR_MESSAGE,
+                    message='Google token is required',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            user_info_response = requests.get(
+                'https://www.googleapis.com/oauth2/v1/userinfo',
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=10,
             )
-        
-        user_info = user_info_response.json()
+            if user_info_response.status_code != 200:
+                return handle_error_response(
+                    details=DEFAULT_ERROR_MESSAGE,
+                    message='Failed to obtain user info',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            user_info = user_info_response.json()
 
         # Example: Assuming email is used for login
         email = user_info.get('email')
@@ -978,8 +1109,24 @@ def sign_in_via_gmail(request):
         given_name = user_info.get('given_name', '')
         family_name = user_info.get('family_name', '')
 
-        # Find or create user based on email
-        user, created = User.objects.get_or_create(email=email, account_type=account_type)
+        # Email is unique across account types. Never use a customer ID token
+        # to enter an existing vendor, mechanic, or admin account.
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'account_type': account_type, 'username': email},
+        )
+        if user.account_type != account_type:
+            return handle_error_response(
+                details=DEFAULT_ERROR_MESSAGE,
+                message='This Google account belongs to a different MotoSpar account type.',
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        if not user.is_active:
+            return handle_error_response(
+                details=DEFAULT_ERROR_MESSAGE,
+                message='This MotoSpar account is inactive.',
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         # Update user details if they have changed
         if not created:

@@ -79,7 +79,7 @@ def add_shipping_address(request):
             
             if serializer.is_valid():
                 # Save the shipping address
-                serializer.save()
+                serializer.save(user=request.user)
                 response_data = {
                     'data': {
                         'shipping_address': serializer.data,
@@ -148,7 +148,7 @@ def edit_shipping_address(request, address_id):
                 return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
             try:
-                address = ShippingAddress.objects.get(id=address_id, is_active=True)
+                address = ShippingAddress.objects.get(id=address_id, user=request.user, is_active=True)
             except ShippingAddress.DoesNotExist:
                 response_data = {
                     'data': {
@@ -261,7 +261,7 @@ def delete_shipping_address(request, address_id):
     try:
         if request.method == 'DELETE':
             try:
-                address = ShippingAddress.objects.get(id=address_id, is_active=True)
+                address = ShippingAddress.objects.get(id=address_id, user=request.user, is_active=True)
             except ShippingAddress.DoesNotExist:
                 response_data = {
                     'data': {
@@ -321,7 +321,7 @@ def add_billing_address(request):
             
             if serializer.is_valid():
                 # Save the billing address
-                serializer.save()
+                serializer.save(user=request.user)
                 response_data = {
                     'data': {
                         'billing_address': serializer.data,
@@ -376,7 +376,7 @@ def edit_billing_address(request, address_id):
     try:
         if request.method == 'PATCH':
             try:
-                address = BillingAddress.objects.get(id=address_id, is_active=True)
+                address = BillingAddress.objects.get(id=address_id, user=request.user, is_active=True)
             except BillingAddress.DoesNotExist:
                 response_data = {
                     'data': {
@@ -489,7 +489,7 @@ def delete_billing_address(request, address_id):
     try:
         if request.method == 'DELETE':
             try:
-                address = BillingAddress.objects.get(id=address_id, is_active=True)
+                address = BillingAddress.objects.get(id=address_id, user=request.user, is_active=True)
             except BillingAddress.DoesNotExist:
                 response_data = {
                     'data': {
