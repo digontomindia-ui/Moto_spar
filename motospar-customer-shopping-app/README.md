@@ -1,6 +1,6 @@
 # MotoSpar customer shopping app
 
-This project contains the customer shopping experience as a React/Vite web app and an Android app shell generated with Capacitor. The Android app loads the Vite production bundle locally inside Capacitor's native Android WebView; it does not need a hosted website to launch.
+This project contains the customer shopping experience as a React/Vite web app and an Android app shell generated with Capacitor. The Android app loads the Vite production bundle locally inside Capacitor's native Android WebView; it does not need a hosted website to launch. CapacitorHttp handles Android API requests through native networking because the WebView's localhost origin is not accepted by the currently deployed API CORS policy.
 
 ## Requirements
 
@@ -49,7 +49,7 @@ This conversion packages the existing React web UI in a native Android shell. It
 
 ## Release readiness
 
-The Android app now uses direct HTTPS API calls (the same-origin `/api-proxy` only exists in the web server), and the web proxy accepts only the server-configured API origin. For a release build:
+The Android app now uses native HTTPS API calls (the same-origin `/api-proxy` only exists in the web server), and the web proxy accepts only the server-configured API origin. For a release build:
 
 1. Set `VITE_API_BASE_URL` to the production HTTPS API origin before `npm run build:android`.
 2. Set the public Google web client ID in `VITE_GOOGLE_CLIENT_ID` and the same ID in the backend's `GOOGLE_OAUTH2_CLIENT_ID`. Deploy the backend change that accepts and verifies Google ID tokens, and install `google-auth` from backend requirements. Register `com.motosparapp` and each relevant signing certificate fingerprint in the Google Cloud Android OAuth client. Set the server-side chat webhook only when chat is enabled in production. Never put private provider keys in `VITE_*` variables.

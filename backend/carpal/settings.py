@@ -300,6 +300,11 @@ CORS_ORIGIN_WHITELIST = config(
     default='',
     cast=lambda v: [origin.strip() for origin in v.split(',') if origin.strip()],
 )
+# Capacitor's Android WebView uses a localhost origin. The native HTTP bridge
+# handles API calls, but this also permits browser-based flows used by plugins.
+CORS_ORIGIN_WHITELIST = list(dict.fromkeys(
+    CORS_ORIGIN_WHITELIST + ['https://localhost', 'http://localhost']
+))
 
 
 CORS_ALLOW_METHODS = [ 'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT', ]

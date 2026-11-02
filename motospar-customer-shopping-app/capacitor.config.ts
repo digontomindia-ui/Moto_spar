@@ -7,6 +7,11 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
   },
+  plugins: {
+    // Android WebView runs on https://localhost. Use native networking for
+    // MotoSpar API requests so customer auth does not depend on browser CORS.
+    CapacitorHttp: { enabled: true },
+  },
 };
 
 export default config;

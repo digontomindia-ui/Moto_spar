@@ -130,7 +130,6 @@ async function tryRefreshAccessToken(): Promise<string | null> {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        'X-MotoSpar-Base-Url': getActiveApiBaseUrl(),
       };
 
       const res = await fetch(fetchUrl, {
@@ -314,7 +313,6 @@ export async function requestMotoSpar<T = Record<string, unknown>>(
   ): Promise<Response> => {
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      'X-MotoSpar-Base-Url': getActiveApiBaseUrl(),
     };
 
     if (authenticated) {

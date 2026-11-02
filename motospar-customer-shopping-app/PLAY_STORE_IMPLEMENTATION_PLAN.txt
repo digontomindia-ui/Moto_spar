@@ -6,7 +6,7 @@ Current project
 Customer Android app: motospar-customer-shopping-app/
 Android package/application ID: com.motosparapp
 Previous APK observed in workspace: versionCode 9, versionName 1.0
-New app version configured here: versionCode 10, versionName 1.1.0
+New app version configured here: versionCode 11, versionName 1.1.1
 Current packaging: Capacitor WebView app (React/Vite web bundle in Android)
 Current APK from this workspace: debug build for testing only; do not upload it.
 Backend code: backend/ in the Moto_spar repository.
@@ -90,13 +90,13 @@ PHASE 4 — Build and inspect the Android release bundle
 2. Review Android minimum SDK. The new project currently uses API 24 while the
    old APK supported API 23. Decide whether ending API 23 support is acceptable
    for existing customers before release.
-3. Increment versionCode for every Play upload. The current value is 10 to be
+3. Increment versionCode for every Play upload. The current value is 11 to be
    greater than the observed previous APK's 9. Set versionName to the customer
-   release label selected by product, currently 1.1.0.
+   release label selected by product, currently 1.1.1.
 4. Build the signed Android App Bundle from android/ with JDK 21 and the
    environment-only keystore settings:
    ./gradlew bundleRelease
-5. Inspect the resulting AAB and verify package, versionCode 10, versionName,
+5. Inspect the resulting AAB and verify package, versionCode 11, versionName,
    target SDK, permissions, release signing, minification, and embedded API
    configuration. Never upload app-debug.apk.
 
@@ -141,7 +141,7 @@ pass, and production rollout has an owner and monitoring plan.
 
 Important current status
 ------------------------
-- versionCode/versionName have been set to 10 / 1.1.0 in the Android Gradle
+- versionCode/versionName have been set to 11 / 1.1.1 in the Android Gradle
   configuration.
 - A successful debug APK build proves the project compiles; it is not a signed
   Play release and is not evidence that OAuth/payment are production-ready.
@@ -158,8 +158,8 @@ Release audit — 2026-11-02
   versionCode 9 / versionName 1.0, minSdk 23, targetSdk 35. Its APK signer is
   Android Debug (SHA-256 c36e13b48865c24d5e376b6e232af7dbb446646586c4f6f9c06927816c13c660),
   so it is not a Play upload key and must not be used to publish a release.
-- This project keeps the same applicationId and advances versionCode to 10 /
-  versionName 1.1.0. It targets API 36, which meets the Google Play requirement
+- This project keeps the same applicationId and advances versionCode to 11 /
+  versionName 1.1.1. It targets API 36, which meets the Google Play requirement
   in effect from August 31, 2026. It currently requires API 24; Capacitor 8's
   Android library also declares API 24, so Android 6.0 (API 23) devices cannot
   receive this build.
@@ -177,13 +177,13 @@ Release audit — 2026-11-02
 - Native Razorpay checkout, foreground geolocation, and Google sign-in are
   implemented and compile. Provider registration and end-to-end payment/sign-in
   validation on a physical Android device remain required.
-- The latest debug APK is 8.62 MB and uses the same Android Debug signing
+- The latest debug APK is 6.15 MB and uses the same Android Debug signing
   certificate as MotoSpar-production-test.apk, so it can be tested as an update
   over that specific APK. This debug certificate is not a Play upload key.
 - The configured https://api.motospar.com/ origin answered HTTP 200 on
   2026-11-02. No Android device or emulator was connected for end-to-end tests.
 - The local backend virtual environment has google-auth installed. Django's
-  `manage.py check` passed, and 22 focused backend tests for Google ID tokens,
+  `manage.py check` passed, and 23 focused backend tests for Google ID tokens,
   chat, deletion requests, pricing, cart, checkout, and payment passed on SQLite.
 - The backend Razorpay callback now requires the customer session, verifies the
   signature before writing payment fields, checks the provider's captured
@@ -198,6 +198,14 @@ Release audit — 2026-11-02
 - Production builds now ignore local API-base overrides; the editable API
   target control is available only in development. Android release traffic is
   pinned to the configured HTTPS MotoSpar API origin.
+- Registration on the first installed test APK failed because its WebView
+  requests used the https://localhost origin while the live API preflight had
+  no Access-Control-Allow-Origin response. The new Android build enables
+  CapacitorHttp native networking, matching the previous React Native app's
+  native request behavior. The backend also permits Capacitor localhost
+  origins after deployment. The login form is top-aligned on phone screens,
+  and the production API Config control and false connected-status footer
+  are removed.
 - The customer app now has an account-deletion request action. Django provides
   an authenticated request endpoint and a public CSRF-protected
   /account-deletion/ page. Requests are stored in ContactUs for support to

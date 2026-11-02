@@ -110,6 +110,7 @@ class AccountDeletionRequestTests(TestCase):
         self.assertEqual(ContactUs.objects.filter(email=self.customer.email).count(), 1)
         notify.assert_called_once()
 
+
     @patch('app.views.notify_admin_about_contact_request')
     def test_public_page_accepts_valid_request(self, notify):
         page = self.client.get('/account-deletion/')
@@ -119,3 +120,14 @@ class AccountDeletionRequestTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(ContactUs.objects.filter(email='buyer@example.org').exists())
         notify.assert_called_once()
+
+
+class MobileCorsTests(TestCase):
+    def test_android_webview_origin_is_allowed(self):
+        response = self.client.options(
+            '/api/customer/register/',
+            HTTP_ORIGIN='https://localhost',
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST',
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS='content-type',
+        )
+        self.assertEqual(response['Access-Control-Allow-Origin'], 'https://localhost')

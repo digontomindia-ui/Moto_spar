@@ -364,22 +364,22 @@ export const AuthFlow: React.FC = () => {
           </span>
         </div>
 
-        <button
+        {import.meta.env.DEV && <button
           type="button"
           onClick={() => setShowEnvConfig((v) => !v)}
           className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-2"
         >
           <Settings2 className="w-4 h-4 text-slate-500" />
           <span>API Config</span>
-        </button>
+        </button>}
       </header>
 
-      <div className="max-w-md w-full mx-auto px-4 pt-4">
+      {!Capacitor.isNativePlatform() && <div className="max-w-md w-full mx-auto px-4 pt-4">
         <PWAInstallBanner />
-      </div>
+      </div>}
 
       {/* Optional Environment Configuration Drawer */}
-      {showEnvConfig && (
+      {import.meta.env.DEV && showEnvConfig && (
         <div className="max-w-md w-full mx-auto mt-4 px-4">
           <form
             onSubmit={handleSaveEnvConfig}
@@ -465,7 +465,7 @@ export const AuthFlow: React.FC = () => {
       )}
 
       {/* Main Auth Card */}
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
+      <main className="flex-1 flex items-start justify-center px-4 py-6 sm:p-8">
         <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs">
           {/* Status Alerts */}
           {errorMessage && (
@@ -977,7 +977,7 @@ export const AuthFlow: React.FC = () => {
       )}
 
       <footer className="py-4 px-6 text-center text-xs text-slate-500">
-        MotoSpar Customer Shopping App · Connected to live MotoSpar API
+        MotoSpar · Car &amp; Bike Spare Parts
       </footer>
     </div>
   );
